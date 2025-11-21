@@ -480,7 +480,7 @@ impl HotkeyManager {
         
         modified
     }
-    
+
     fn format_binding(b: &HotkeyBinding) -> String {
         if !b.is_bound() {
             return "[Unbound]".to_string();
@@ -495,6 +495,10 @@ impl HotkeyManager {
     }
     
     fn detect_key(ui: &Ui) -> Option<Key> {
+        Self::detect_key_static(ui)
+    }
+    
+    pub fn detect_key_static(ui: &Ui) -> Option<Key> {
         let io = ui.io();
         const KEYS: &[Key] = &[
             Key::A, Key::B, Key::C, Key::D, Key::E, Key::F, Key::G, Key::H,
@@ -563,4 +567,93 @@ impl HaCMetadata {
     pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, manager: &mut HotkeyManager, global: Option<&HotkeyManager>) -> bool {
         manager.render_config(ui, &mut self.hotkeys, global)
     }
+
+    /// Render hotkey config without a HotkeyManager (uses internal static capture state)
+    /// Useful for modules that don't have their own HotkeyManager
+    pub fn render_hotkey_config_simple(&mut self, ui: &imgui::Ui) -> bool {
+        use std::cell::RefCell;
+        thread_local! {
+            static CAPTURE: RefCell<Option<String>> = RefCell::new(None);
+        }
+        
+        CAPTURE.with(|capture| {
+            let mut capture = capture.borrow_mut();
+            Self::render_config_inner(ui, &mut self.hotkeys, &mut capture)
+        })
+    }
+    
+    fn render_config_inner(ui: &imgui::Ui, hotkeys: &mut Vec<HotkeyBinding>, capture_state: &mut Option<String>) -> bool {
+        use crate::gui::hotkey_manager::HotkeyManager;
+        
+        let mut modified = false;
+        let mut to_remove: Option<usize> = None;
+        
+        for (idx, binding) in hotkeys.iter_mut().enumerate() {
+            let id = binding.id.clone();
+            
+            ui.group(|| {
+                let is_capturing = capture_state.as_ref().map(|s| s == &id).unwrap_or(false);
+                
+                let btn_label = if is_capturing {
+                    format!("[ Press key... ]##{}", id)
+                } else {
+                    format!("{}##{}", HotkeyManager::format_binding(binding), id)
+                };
+                
+                if ui.button(&btn_label) {
+                    *capture_state = if is_capturing { None } else { Some(id.clone()) };
+                }
+                
+                if is_capturing {
+                    if let Some(key) = HotkeyManager::detect_key_static(ui) {
+                        binding.key = key as i32;
+                        binding.shift = ui.io().key_shift;
+                        binding.ctrl = ui.io().key_ctrl;
+                        binding.alt = ui.io().key_alt;
+                        *capture_state = None;
+                        modified = true;
+                    }
+                    if ui.is_key_pressed(imgui::Key::Escape) {
+                        *capture_state = None;
+                    }
+                }
+                
+                ui.same_line();
+                ui.text(&id);
+                
+                ui.same_line();
+                if ui.checkbox(format!("C##{}", id), &mut binding.ctrl) { modified = true; }
+                ui.same_line();
+                if ui.checkbox(format!("S##{}", id), &mut binding.shift) { modified = true; }
+                ui.same_line();
+                if ui.checkbox(format!("A##{}", id), &mut binding.alt) { modified = true; }
+                
+                ui.same_line();
+                ui.set_next_item_width(80.0);
+                let mut cd = binding.cooldown_ms as i32;
+                if ui.input_int(format!("ms##{}", id), &mut cd).step(50).build() {
+                    binding.cooldown_ms = cd.max(0) as u64;
+                    modified = true;
+                }
+                
+                ui.same_line();
+                if ui.small_button(format!("X##{}", id)) {
+                    to_remove = Some(idx);
+                }
+            });
+        }
+        
+        if let Some(idx) = to_remove {
+            hotkeys.remove(idx);
+            modified = true;
+        }
+        
+        if ui.button("+ Add") {
+            hotkeys.push(HotkeyBinding::unbound(format!("action_{}", hotkeys.len())));
+            modified = true;
+        }
+        
+        modified
+    }
+
 }
