@@ -225,6 +225,34 @@ impl HotkeyManager {
         manager
     }
     
+
+
+    pub fn find_conflict(&self, binding: &HotkeyBinding) -> Option<&str> {
+        if let Some(hk) = binding.to_hotkey() {
+            for (id, state) in &self.hotkeys {
+                if state.hotkey == hk {
+                    return Some(id);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn find_hotkey_conflict(&self, hotkey: &Hotkey) -> Option<&str> {
+        for (id, state) in &self.hotkeys {
+            if &state.hotkey == hotkey {
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    pub fn list_all(&self) -> Vec<(&str, &Hotkey)> {
+        self.hotkeys.iter()
+            .map(|(id, state)| (id.as_str(), &state.hotkey))
+            .collect()
+    }
+
     /// Register a new hotkey with a unique identifier
     /// 
     /// # Arguments
@@ -350,7 +378,7 @@ impl HotkeyManager {
             }
         }
     }
-    
+
     /// Sync all modules' hotkeys (call on init)
     pub fn sync_all<'a>(&mut self, modules: impl Iterator<Item = (TypeId, &'a [HotkeyBinding])>) {
         for (type_id, bindings) in modules {
@@ -367,12 +395,16 @@ impl HotkeyManager {
     
     /// Render config UI for a set of hotkey bindings
     /// Returns true if any binding was modified
-    pub fn render_config(&mut self, ui: &Ui, hotkeys: &mut Vec<HotkeyBinding>) -> bool {
+    pub fn render_config(&mut self, ui: &Ui, hotkeys: &mut Vec<HotkeyBinding>, global_manager: Option<&HotkeyManager>) -> bool {
         let mut modified = false;
         let mut to_remove: Option<usize> = None;
         
         for (idx, binding) in hotkeys.iter_mut().enumerate() {
             let id = binding.id.clone();
+            
+            // Check for conflicts
+            let conflict = global_manager.and_then(|gm| gm.find_conflict(binding));
+            
             ui.group(|| {
                 let is_capturing = self.capture_state.as_ref().map(|s| s == &id).unwrap_or(false);
                 
@@ -382,9 +414,14 @@ impl HotkeyManager {
                     format!("{}##{}", Self::format_binding(binding), id)
                 };
                 
+                // Red button if conflict
+                let _token = conflict.map(|_| ui.push_style_color(imgui::StyleColor::Button, [0.8, 0.2, 0.2, 1.0]));
+                
                 if ui.button(&btn_label) {
                     self.capture_state = if is_capturing { None } else { Some(id.clone()) };
                 }
+                
+                drop(_token);
                 
                 if is_capturing {
                     if let Some(key) = Self::detect_key(ui) {
@@ -402,6 +439,12 @@ impl HotkeyManager {
                 
                 ui.same_line();
                 ui.text(&id);
+                
+                // Show conflict warning
+                if let Some(conflicting_id) = conflict {
+                    ui.same_line();
+                    ui.text_colored([1.0, 0.3, 0.3, 1.0], format!("(conflicts: {})", conflicting_id));
+                }
                 
                 ui.same_line();
                 if ui.checkbox(format!("C##{}", id), &mut binding.ctrl) { modified = true; }
@@ -437,7 +480,7 @@ impl HotkeyManager {
         
         modified
     }
-
+    
     fn format_binding(b: &HotkeyBinding) -> String {
         if !b.is_bound() {
             return "[Unbound]".to_string();
@@ -471,6 +514,10 @@ impl HotkeyManager {
     }
 }
 
+// ============================================================
+// Add to HaCKS impl (in mod.rs or wherever HaCKS is)
+// ============================================================
+
 impl HaCKS {
     /// Sync all module hotkeys to the manager
     pub fn sync_all_hotkeys(&mut self) {
@@ -503,22 +550,17 @@ impl HaCKS {
             })
             .collect()
     }
-    
-    pub fn render_hotkey_config_for<T: HaCK + 'static>(&mut self, ui: &Ui) -> bool {
-        let tid = std::any::TypeId::of::<T>();
-        if let Some(module) = self.hacs.get_mut(&tid) {
-            let hotkeys = &mut module.metadata_mut().hotkeys;
-            self.hotkey_manager.render_config(ui, hotkeys)
-        } else {
-            false
-        }
-    }
-
 }
 
+// ============================================================
 // Convenience on HaCMetadata (add to metadata.rs)
+// ============================================================
+
 impl HaCMetadata {
-    pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, manager: &mut HotkeyManager) -> bool {
-        manager.render_config(ui, &mut self.hotkeys)
+    /// Render hotkey config UI
+    /// - `manager`: The HotkeyManager that owns capture state for this UI
+    /// - `global`: Optional reference to app-level hotkeys for conflict detection
+    pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, manager: &mut HotkeyManager, global: Option<&HotkeyManager>) -> bool {
+        manager.render_config(ui, &mut self.hotkeys, global)
     }
 }
