@@ -1,12 +1,16 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, time::Duration};
 use serde::{Deserialize, Serialize};
+use imgui::Key;
+
+
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HaCMetadata {
     pub name: Cow<'static, str>,
     pub description: Cow<'static, str>,
     pub category: Cow<'static, str>,
-    pub hotkey: Option<String>,
+    pub hotkeys: Vec<HotkeyBinding>,
     pub menu_weight: f32,
     pub window_weight: f32,
     pub draw_weight: f32,
@@ -29,7 +33,7 @@ impl Default for HaCMetadata {
             name: Cow::Borrowed("unknown"),
             description: Cow::Borrowed("unknown"),
             category: Cow::Borrowed("unknown"),
-            hotkey: None,
+            hotkeys: Vec::new(),
             menu_weight: 1.0,
             window_weight: 1.0,
             draw_weight: 1.0,
@@ -54,3 +58,43 @@ pub const fn default_window_size() -> [f32; 2] {
     [0.0, 0.0]
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HotkeyBinding {
+    pub id: String,
+    pub key: i32,
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub cooldown_ms: u64,
+}
+
+impl HotkeyBinding {
+    pub fn new(id: impl Into<String>, key: Key) -> Self {
+        Self {
+            id: id.into(),
+            key: key as i32,
+            shift: false,
+            ctrl: false,
+            alt: false,
+            cooldown_ms: 200,
+        }
+    }
+    
+    pub fn with_shift(mut self) -> Self { self.shift = true; self }
+    pub fn with_ctrl(mut self) -> Self { self.ctrl = true; self }
+    pub fn with_alt(mut self) -> Self { self.alt = true; self }
+    pub fn with_cooldown(mut self, ms: u64) -> Self { self.cooldown_ms = ms; self }
+    
+    pub fn to_hotkey(&self) -> crate::gui::hotkey_manager::Hotkey {
+        let key: Key = unsafe { std::mem::transmute(self.key) };
+        let mut hk = crate::gui::hotkey_manager::Hotkey::new(key);
+        if self.shift { hk = hk.with_shift(); }
+        if self.ctrl { hk = hk.with_ctrl(); }
+        if self.alt { hk = hk.with_alt(); }
+        hk
+    }
+    
+    pub fn cooldown(&self) -> Duration {
+        Duration::from_millis(self.cooldown_ms)
+    }
+}

@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use serde::Deserialize;
 use erased_serde::Serialize as ErasedSerialize;
 use imgui::{Ui,DrawListMut};
-use crate::{HaCKS, HaCMetadata};
+use crate::{HaCKS, HaCMetadata, gui::hotkey_manager::HotkeyManager, metadata::HotkeyBinding};
 
 #[allow(unused)]
 pub trait HaCK: ErasedSerialize + Send + 'static {
@@ -40,6 +40,10 @@ pub trait HaCK: ErasedSerialize + Send + 'static {
     fn on_load(&mut self) { }
     fn before_render(&mut self,ui: &Ui) {}
     fn init(&mut self) {}
+    fn hotkey_bindings(&self) -> &[HotkeyBinding] {
+        &self.metadata().hotkeys
+    }
+    fn on_hotkey(&mut self, hotkey_id: &str) {}
     fn post_load_init(&mut self) {}
     fn exit(&mut self) {}
     fn blocking_mode_with_kb(&mut self,if_bool:bool,else_bool:bool){}

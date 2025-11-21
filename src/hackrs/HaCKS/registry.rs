@@ -52,7 +52,7 @@ macro_rules! impl_dummy_nac_boilerplate {
                 name: std::borrow::Cow::Borrowed("Dummy"),
                 description: std::borrow::Cow::Borrowed("Placeholder module"),
                 category: std::borrow::Cow::Borrowed("System"),
-                hotkey: None,
+                hotkeys: Vec::new(),
                 menu_weight: 0.0,
                 window_weight: 0.0,
                 draw_weight: 0.0,

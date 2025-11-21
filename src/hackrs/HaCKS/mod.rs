@@ -13,11 +13,13 @@ pub mod iteration;
 pub mod search;
 pub mod events;
 
+
 pub use update::*;
 pub use registry::*;
 pub use iteration::*;
 pub use search::*;
 pub use events::*;
+use crate::gui::hotkey_manager::HotkeyManager;
 
 use crate::hack::HaCK;
 #[allow(unused)]
@@ -29,6 +31,8 @@ pub struct HaCKS {
     pub menu_dirty: bool,
     pub menu_cache: Option<MenuCache>,
     
+    pub hotkey_manager: HotkeyManager,
+    pub triggered_hotkeys: Vec<String>,
     //gui
     pub show_debug_window: bool,
     pub windowed_groups: HashMap<Vec<String>, bool>,
@@ -48,6 +52,9 @@ impl HaCKS {
             init_data: HashMap::new(),
             menu_cache: None,
             menu_dirty: false,
+
+            hotkey_manager: HotkeyManager::new(),
+            triggered_hotkeys: Vec::new(),
             show_debug_window: false,
             metadata_window: false,
             windowed_groups: Default::default(),

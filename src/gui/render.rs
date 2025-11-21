@@ -228,6 +228,11 @@ impl HaCKS {
         draw_list_fg: &mut DrawListMut,
         draw_list_bg: &mut DrawListMut,
     ) {
+        self.triggered_hotkeys.clear();
+        self.triggered_hotkeys = self.hotkey_manager.poll_all(ui);
+
+
+
         let mut render_tree: HashMap<Vec<String>, Vec<TypeId>> = HashMap::new();
         let mut independent: Vec<TypeId> = Vec::new();
         

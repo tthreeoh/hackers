@@ -36,7 +36,7 @@ impl HaCKS {
                             ui.text(format!("Name: {}", metadata.name));
                             ui.text(format!("Description: {}", metadata.description));
                             ui.text(format!("Category: {}", metadata.category));
-                            ui.text(format!("Hotkey: {:?}", metadata.hotkey));
+                            ui.text(format!("Hotkey: {:?}", metadata.hotkeys));
                             ui.separator();
                             ui.text(format!("Menu Weight: {}", metadata.menu_weight));
                             ui.text(format!("Window Weight: {}", metadata.window_weight));
