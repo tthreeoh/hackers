@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use imgui::{Ui, Key};
 use serde::{Deserialize, Serialize};
+use crate::metadata::HotkeyBinding;
+use std::any::TypeId;
 
-use crate::HaCKS;
+use crate::{HaCKS, HaCMetadata};
 
 impl HaCKS {
     /// Sync all module hotkeys to the manager (call on init/module load)
@@ -11,16 +13,14 @@ impl HaCKS {
         for module in self.hacs.values() {
             let type_id = module.nac_type_id();
             for binding in module.hotkey_bindings() {
-                // Prefix with type_id hash for uniqueness
-                let full_id = format!("{:?}::{}", type_id, binding.id);
-                self.hotkey_manager.register(
-                    full_id,
-                    binding.to_hotkey(),
-                    binding.cooldown()
-                );
+                if let Some(hk) = binding.to_hotkey() {
+                    let full_id = format!("{:?}::{}", type_id, binding.id);
+                    self.hotkey_manager.register(full_id, hk, binding.cooldown());
+                }
             }
         }
     }
+    
     
     /// Dispatch triggered hotkeys to modules (call in render_draw)
     pub fn dispatch_hotkeys(&mut self, ui: &imgui::Ui) {
@@ -42,6 +42,8 @@ impl HaCKS {
             }
         }
     }
+
+
 }
 
 
@@ -323,5 +325,187 @@ impl HotkeyManager {
             .filter(|id| self.is_triggered(id, ui))
             .collect()
     }
+
+     pub fn sync_from_bindings(&mut self, module_id: TypeId, hotkeys: &[HotkeyBinding]) {
+        let prefix = format!("{:?}", module_id);
+        
+        // Remove old bindings for this module
+        let to_remove: Vec<_> = self.hotkeys
+            .keys()
+            .filter(|k| k.starts_with(&prefix))
+            .cloned()
+            .collect();
+        
+        for key in to_remove {
+            self.hotkeys.remove(&key);
+        }
+        
+        // Register new bindings (skip unbound)
+        for binding in hotkeys {
+            if let Some(hk) = binding.to_hotkey() {
+                let full_id = format!("{}::{}", prefix, binding.id);
+                self.register(full_id, hk, binding.cooldown());
+            }
+        }
+    }
+    
+    /// Sync all modules' hotkeys (call on init)
+    pub fn sync_all<'a>(&mut self, modules: impl Iterator<Item = (TypeId, &'a [HotkeyBinding])>) {
+        for (type_id, bindings) in modules {
+            self.sync_from_bindings(type_id, bindings);
+        }
+    }
+    
+    /// Check if a module's hotkey was triggered this frame
+    /// Returns the hotkey id without the module prefix
+    pub fn module_hotkey_triggered(&mut self, module_id: TypeId, hotkey_id: &str, ui: &Ui) -> bool {
+        let full_id = format!("{:?}::{}", module_id, hotkey_id);
+        self.is_triggered(&full_id, ui)
+    }
+    
+    /// Render config UI for a set of hotkey bindings
+    /// Returns true if any binding was modified
+    pub fn render_config(ui: &Ui, hotkeys: &mut Vec<HotkeyBinding>, capture_state: &mut Option<String>) -> bool {
+        let mut modified = false;
+        let mut to_remove: Option<usize> = None;
+        
+        for (idx, binding) in hotkeys.iter_mut().enumerate() {
+            let id = binding.id.clone();
+            ui.group(|| {
+                let is_capturing = capture_state.as_ref().map(|s| s == &id).unwrap_or(false);
+                
+                let btn_label = if is_capturing {
+                    format!("[ Press key... ]##{}", id)
+                } else {
+                    format!("{}##{}", Self::format_binding(binding), id)
+                };
+                
+                if ui.button(&btn_label) {
+                    *capture_state = if is_capturing { None } else { Some(id.clone()) };
+                }
+                
+                if is_capturing {
+                    if let Some(key) = Self::detect_key(ui) {
+                        binding.key = key as i32;
+                        binding.shift = ui.io().key_shift;
+                        binding.ctrl = ui.io().key_ctrl;
+                        binding.alt = ui.io().key_alt;
+                        *capture_state = None;
+                        modified = true;
+                    }
+                    if ui.is_key_pressed(Key::Escape) {
+                        *capture_state = None;
+                    }
+                }
+                
+                ui.same_line();
+                ui.text(&id);
+                
+                ui.same_line();
+                if ui.checkbox(format!("C##{}", id), &mut binding.ctrl) { modified = true; }
+                ui.same_line();
+                if ui.checkbox(format!("S##{}", id), &mut binding.shift) { modified = true; }
+                ui.same_line();
+                if ui.checkbox(format!("A##{}", id), &mut binding.alt) { modified = true; }
+                
+                ui.same_line();
+                ui.set_next_item_width(80.0);
+                let mut cd = binding.cooldown_ms as i32;
+                if ui.input_int(format!("ms##{}", id), &mut cd).step(50).build() {
+                    binding.cooldown_ms = cd.max(0) as u64;
+                    modified = true;
+                }
+                
+                ui.same_line();
+                if ui.small_button(format!("X##{}", id)) {
+                    to_remove = Some(idx);
+                }
+            });
+        }
+        
+        if let Some(idx) = to_remove {
+            hotkeys.remove(idx);
+            modified = true;
+        }
+        
+        if ui.button("+ Add") {
+            hotkeys.push(HotkeyBinding::unbound(format!("action_{}", hotkeys.len())));
+            modified = true;
+        }
+        
+        modified
+    }
+
+    fn format_binding(b: &HotkeyBinding) -> String {
+        if !b.is_bound() {
+            return "[Unbound]".to_string();
+        }
+        let mut s = String::new();
+        if b.ctrl { s.push_str("Ctrl+"); }
+        if b.shift { s.push_str("Shift+"); }
+        if b.alt { s.push_str("Alt+"); }
+        let key: Key = unsafe { std::mem::transmute(b.key) };
+        s.push_str(&format!("{:?}", key));
+        s
+    }
+    
+    fn detect_key(ui: &Ui) -> Option<Key> {
+        let io = ui.io();
+        const KEYS: &[Key] = &[
+            Key::A, Key::B, Key::C, Key::D, Key::E, Key::F, Key::G, Key::H,
+            Key::I, Key::J, Key::K, Key::L, Key::M, Key::N, Key::O, Key::P,
+            Key::Q, Key::R, Key::S, Key::T, Key::U, Key::V, Key::W, Key::X,
+            Key::Y, Key::Z,
+            Key::F1, Key::F2, Key::F3, Key::F4, Key::F5, Key::F6,
+            Key::F7, Key::F8, Key::F9, Key::F10, Key::F11, Key::F12,
+            Key::Keypad0, Key::Keypad1, Key::Keypad2, Key::Keypad3, Key::Keypad4,
+            Key::Keypad5, Key::Keypad6, Key::Keypad7, Key::Keypad8, Key::Keypad9,
+            Key::Space, Key::Tab, Key::Enter, Key::Backspace, Key::Delete,
+            Key::Insert, Key::Home, Key::End, Key::PageUp, Key::PageDown,
+            Key::LeftArrow, Key::RightArrow, Key::UpArrow, Key::DownArrow,
+            Key::GraveAccent,
+        ];
+        KEYS.iter().find(|&&k| io.keys_down[k as usize]).copied()
+    }
 }
 
+impl HaCKS {
+    /// Sync all module hotkeys to the manager
+    pub fn sync_all_hotkeys(&mut self) {
+        let bindings: Vec<_> = self.hacs
+            .iter()
+            .map(|(&tid, m)| (tid, m.metadata().hotkeys.clone()))
+            .collect();
+        
+        for (tid, hks) in bindings {
+            self.hotkey_manager.sync_from_bindings(tid, &hks);
+        }
+    }
+    
+    /// Sync a single module's hotkeys (call after config UI changes)
+    pub fn sync_module_hotkeys<T: 'static>(&mut self) {
+        let tid = TypeId::of::<T>();
+        if let Some(module) = self.hacs.get(&tid) {
+            let bindings = module.metadata().hotkeys.clone();
+            self.hotkey_manager.sync_from_bindings(tid, &bindings);
+        }
+    }
+    
+    /// Get triggered hotkeys for a specific module this frame
+    pub fn get_module_triggers(&self, module_id: TypeId) -> Vec<String> {
+        let prefix = format!("{:?}::", module_id);
+        self.triggered_hotkeys
+            .iter()
+            .filter_map(|full_id| {
+                full_id.strip_prefix(&prefix).map(|s| s.to_string())
+            })
+            .collect()
+    }
+}
+
+// Convenience on HaCMetadata (add to metadata.rs)
+impl HaCMetadata {
+    pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, capture: &mut Option<String>) -> bool {
+        HotkeyManager::render_config(ui, &mut self.hotkeys, capture)
+    }
+}
