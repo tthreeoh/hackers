@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::metadata::HotkeyBinding;
 use std::any::TypeId;
 
-use crate::{HaCKS, HaCMetadata};
+use crate::{HaCK, HaCKS, HaCMetadata};
 
 impl HaCKS {
     /// Sync all module hotkeys to the manager (call on init/module load)
@@ -190,6 +190,7 @@ impl HotkeyState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct HotkeyManager {
     hotkeys: HashMap<String, HotkeyState>,
+    capture_state: Option<String>,  // Add this field
 }
 
 impl Default for HotkeyManager {
@@ -202,6 +203,7 @@ impl HotkeyManager {
     pub fn new() -> Self {
         Self {
             hotkeys: HashMap::new(),
+            capture_state: None,
         }
     }
     
@@ -326,7 +328,7 @@ impl HotkeyManager {
             .collect()
     }
 
-     pub fn sync_from_bindings(&mut self, module_id: TypeId, hotkeys: &[HotkeyBinding]) {
+    pub fn sync_from_bindings(&mut self, module_id: TypeId, hotkeys: &[HotkeyBinding]) {
         let prefix = format!("{:?}", module_id);
         
         // Remove old bindings for this module
@@ -365,14 +367,14 @@ impl HotkeyManager {
     
     /// Render config UI for a set of hotkey bindings
     /// Returns true if any binding was modified
-    pub fn render_config(ui: &Ui, hotkeys: &mut Vec<HotkeyBinding>, capture_state: &mut Option<String>) -> bool {
+    pub fn render_config(&mut self, ui: &Ui, hotkeys: &mut Vec<HotkeyBinding>) -> bool {
         let mut modified = false;
         let mut to_remove: Option<usize> = None;
         
         for (idx, binding) in hotkeys.iter_mut().enumerate() {
             let id = binding.id.clone();
             ui.group(|| {
-                let is_capturing = capture_state.as_ref().map(|s| s == &id).unwrap_or(false);
+                let is_capturing = self.capture_state.as_ref().map(|s| s == &id).unwrap_or(false);
                 
                 let btn_label = if is_capturing {
                     format!("[ Press key... ]##{}", id)
@@ -381,7 +383,7 @@ impl HotkeyManager {
                 };
                 
                 if ui.button(&btn_label) {
-                    *capture_state = if is_capturing { None } else { Some(id.clone()) };
+                    self.capture_state = if is_capturing { None } else { Some(id.clone()) };
                 }
                 
                 if is_capturing {
@@ -390,11 +392,11 @@ impl HotkeyManager {
                         binding.shift = ui.io().key_shift;
                         binding.ctrl = ui.io().key_ctrl;
                         binding.alt = ui.io().key_alt;
-                        *capture_state = None;
+                        self.capture_state = None;
                         modified = true;
                     }
                     if ui.is_key_pressed(Key::Escape) {
-                        *capture_state = None;
+                        self.capture_state = None;
                     }
                 }
                 
@@ -501,11 +503,22 @@ impl HaCKS {
             })
             .collect()
     }
+    
+    pub fn render_hotkey_config_for<T: HaCK + 'static>(&mut self, ui: &Ui) -> bool {
+        let tid = std::any::TypeId::of::<T>();
+        if let Some(module) = self.hacs.get_mut(&tid) {
+            let hotkeys = &mut module.metadata_mut().hotkeys;
+            self.hotkey_manager.render_config(ui, hotkeys)
+        } else {
+            false
+        }
+    }
+
 }
 
 // Convenience on HaCMetadata (add to metadata.rs)
 impl HaCMetadata {
-    pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, capture: &mut Option<String>) -> bool {
-        HotkeyManager::render_config(ui, &mut self.hotkeys, capture)
+    pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, manager: &mut HotkeyManager) -> bool {
+        manager.render_config(ui, &mut self.hotkeys)
     }
 }
