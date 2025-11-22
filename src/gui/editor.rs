@@ -275,20 +275,20 @@ impl HaCKS {
                     // Window Position
                     ui.text("Window Position:");
                     ui.next_column();
-                    let mut window_pos = module.metadata().window_pos;
                     ui.set_next_item_width(-1.0);
-                    if ui.input_float2("##wpos", &mut window_pos).build() {
-                        module.metadata_mut().window_pos = window_pos;
+                    {
+                        let metadata = module.metadata_mut();
+                        ui.input_float2("##wpos", &mut metadata.window_pos).build();
                     }
                     ui.next_column();
-                    
+
                     // Window Size
                     ui.text("Window Size:");
                     ui.next_column();
-                    let mut window_size = module.metadata().window_size;
                     ui.set_next_item_width(-1.0);
-                    if ui.input_float2("##wsize", &mut window_size).build() {
-                        module.metadata_mut().window_size = window_size;
+                    {
+                        let metadata = module.metadata_mut();
+                        ui.input_float2("##wsize", &mut metadata.window_size).build();
                     }
                     ui.next_column();
                     
