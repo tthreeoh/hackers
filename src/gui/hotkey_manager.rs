@@ -225,7 +225,27 @@ impl HotkeyManager {
         manager
     }
     
-
+    /// Create a new unbound hotkey binding with a unique ID
+    pub fn create_binding(id: impl Into<String>) -> HotkeyBinding {
+        HotkeyBinding::unbound(id)
+    }
+    
+    /// Create a new binding with a specific key
+    pub fn create_binding_with_key(id: impl Into<String>, key: Key) -> HotkeyBinding {
+        HotkeyBinding::new(id, key)
+    }
+    
+    /// Generate a unique hotkey ID for a module
+    pub fn generate_hotkey_id(existing: &[HotkeyBinding], prefix: &str) -> String {
+        let mut counter = 0;
+        loop {
+            let id = format!("{}_{}", prefix, counter);
+            if !existing.iter().any(|b| b.id == id) {
+                return id;
+            }
+            counter += 1;
+        }
+    }
 
     pub fn find_conflict(&self, binding: &HotkeyBinding) -> Option<&str> {
         if let Some(hk) = binding.to_hotkey() {
@@ -567,9 +587,7 @@ impl HaCMetadata {
     pub fn render_hotkey_config(&mut self, ui: &imgui::Ui, manager: &mut HotkeyManager, global: Option<&HotkeyManager>) -> bool {
         manager.render_config(ui, &mut self.hotkeys, global)
     }
-
-    /// Render hotkey config without a HotkeyManager (uses internal static capture state)
-    /// Useful for modules that don't have their own HotkeyManager
+  
     pub fn render_hotkey_config_simple(&mut self, ui: &imgui::Ui) -> bool {
         use std::cell::RefCell;
         thread_local! {
@@ -597,7 +615,7 @@ impl HaCMetadata {
                 let btn_label = if is_capturing {
                     format!("[ Press key... ]##{}", id)
                 } else {
-                    format!("{}##{}", HotkeyManager::format_binding(binding), id)
+                    format!("{}##{}", Self::format_binding(binding), id)
                 };
                 
                 if ui.button(&btn_label) {
@@ -619,7 +637,11 @@ impl HaCMetadata {
                 }
                 
                 ui.same_line();
-                ui.text(&id);
+                // Make ID editable
+                ui.set_next_item_width(100.0);
+                if ui.input_text(format!("##{}_id", id), &mut binding.id).build() {
+                    modified = true;
+                }
                 
                 ui.same_line();
                 if ui.checkbox(format!("C##{}", id), &mut binding.ctrl) { modified = true; }
@@ -648,12 +670,27 @@ impl HaCMetadata {
             modified = true;
         }
         
-        if ui.button("+ Add") {
-            hotkeys.push(HotkeyBinding::unbound(format!("action_{}", hotkeys.len())));
+        // Add new hotkey button
+        if ui.button("+ Add Hotkey") {
+            let new_id = HotkeyManager::generate_hotkey_id(hotkeys, "hotkey");
+            hotkeys.push(HotkeyBinding::unbound(new_id));
             modified = true;
         }
         
         modified
+    }
+    
+    fn format_binding(b: &HotkeyBinding) -> String {
+        if !b.is_bound() {
+            return "[Unbound]".to_string();
+        }
+        let mut s = String::new();
+        if b.ctrl { s.push_str("Ctrl+"); }
+        if b.shift { s.push_str("Shift+"); }
+        if b.alt { s.push_str("Alt+"); }
+        let key: imgui::Key = unsafe { std::mem::transmute(b.key) };
+        s.push_str(&format!("{:?}", key));
+        s
     }
 
 }

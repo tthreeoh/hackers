@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use serde::Deserialize;
 use erased_serde::Serialize as ErasedSerialize;
 use imgui::{Ui,DrawListMut};
-use crate::{HaCKS, HaCMetadata, gui::hotkey_manager::HotkeyManager, metadata::HotkeyBinding};
+use crate::{HaCKS, HaCMetadata, metadata::HotkeyBinding};
 
 #[allow(unused)]
 pub trait HaCK: ErasedSerialize + Send + 'static {

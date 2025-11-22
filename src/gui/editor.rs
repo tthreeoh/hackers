@@ -272,8 +272,55 @@ impl HaCKS {
                     }
                     ui.next_column();
                     
+                    // Window Position
+                    ui.text("Window Position:");
+                    ui.next_column();
+                    let mut window_pos = module.metadata().window_pos;
+                    ui.set_next_item_width(-1.0);
+                    if ui.input_float2("##wpos", &mut window_pos).build() {
+                        module.metadata_mut().window_pos = window_pos;
+                    }
+                    ui.next_column();
+                    
+                    // Window Size
+                    ui.text("Window Size:");
+                    ui.next_column();
+                    let mut window_size = module.metadata().window_size;
+                    ui.set_next_item_width(-1.0);
+                    if ui.input_float2("##wsize", &mut window_size).build() {
+                        module.metadata_mut().window_size = window_size;
+                    }
+                    ui.next_column();
+                    
+                    // Auto Resize Window
+                    ui.text("Auto Resize:");
+                    ui.next_column();
+                    let mut auto_resize = module.metadata().auto_resize_window;
+                    if ui.checkbox("##autoresize", &mut auto_resize) {
+                        module.metadata_mut().auto_resize_window = auto_resize;
+                    }
+                    ui.next_column();
+                    
                     ui.columns(1, "", false);
                     
+                    // Hotkeys section
+                    if ui.collapsing_header("Hotkeys", imgui::TreeNodeFlags::empty()) {
+                        ui.indent();
+                        
+                        // Render hotkey config UI
+                        let hotkeys_modified = module.metadata_mut()
+                            .render_hotkey_config_simple(ui);
+                        
+                        if hotkeys_modified {
+                            // Re-sync this module's hotkeys with the global manager
+                            let bindings = module.metadata().hotkeys.clone();
+                            self.hotkey_manager.sync_from_bindings(*type_id, &bindings);
+                        }
+                        
+                        ui.unindent();
+                    }
+                    
+                    // Dependencies
                     let deps = module.update_dependencies();
                     if !deps.is_empty() {
                         ui.text_colored([0.7, 0.7, 0.7, 1.0], "Dependencies:");
@@ -291,7 +338,7 @@ impl HaCKS {
             }
         }
     }
-    
+
     pub fn render_weight_visualization_content(&mut self, ui: &Ui) {
         if ui.radio_button_bool("Menu Order", self.viz_mode == 0) {
             self.viz_mode = 0;
