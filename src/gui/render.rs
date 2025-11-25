@@ -36,7 +36,7 @@ impl HaCKS {
             });
         
         if !show {
-            self.windowed_groups.remove(path);
+            self.windowed_groups.borrow_mut().remove(path);
         }
     }
     
@@ -71,7 +71,7 @@ impl HaCKS {
                 let mut submenu_path = current_path.to_vec();
                 submenu_path.push(submenu_name.clone());
     
-                let is_windowed = self.windowed_groups.get(&submenu_path).copied().unwrap_or(false);
+                let is_windowed = self.windowed_groups.borrow_mut().get(&submenu_path).copied().unwrap_or(false);
     
                 if !is_windowed {
                     // Collect all entries for this submenu
@@ -152,29 +152,29 @@ impl HaCKS {
     
     
     pub fn render_menu(&mut self, ui: &Ui) {
-        if self.menu_cache.is_none() || self.menu_dirty {
-            self.menu_cache = Some(self.rebuild_menu_cache());
-            self.menu_dirty = false;
+        if self.menu_cache.borrow().is_none() || *self.menu_dirty.borrow() {
+            *self.menu_cache.borrow_mut() = Some(self.rebuild_menu_cache());
+            *self.menu_dirty.borrow_mut() = false;
         }
     
         let cache = self.menu_cache.take().unwrap();
      
         for (top_name, entries) in cache.top_level.iter() {
             let top_path = vec![top_name.clone()];
-            let is_windowed = self.windowed_groups.get(&top_path).copied().unwrap_or(false);
+            let is_windowed = self.windowed_groups.borrow().get(&top_path).copied().unwrap_or(false);
             
             if !is_windowed {
                 ui.menu(top_name, || {
                     self.render_grouped_entries(ui, entries, 1, &top_path);
                     ui.separator();
                     if ui.button("Undock Group##undock_grp") {
-                        self.windowed_groups.insert(top_path.clone(), true);
+                        self.windowed_groups.borrow_mut().insert(top_path.clone(), true);
                     }
                 });
             }
         }
         
-        self.menu_cache = Some(cache);
+        *self.menu_cache.borrow_mut() = Some(cache);
     }
     pub fn render_window(&mut self, ui: &Ui) {
         let type_ids: Vec<_> = self.hacs.keys().copied().collect();
@@ -241,8 +241,8 @@ impl HaCKS {
         draw_list_fg: &mut DrawListMut,
         draw_list_bg: &mut DrawListMut,
     ) {
-        self.triggered_hotkeys.clear();
-        self.triggered_hotkeys = self.hotkey_manager.poll_all(ui);
+        self.triggered_hotkeys.borrow_mut().clear();
+        *self.triggered_hotkeys.borrow_mut() = self.hotkey_manager.borrow_mut().poll_all(ui);
     
         let mut render_tree: HashMap<Vec<String>, Vec<TypeId>> = HashMap::new();
         let mut independent: Vec<TypeId> = Vec::new();
@@ -288,12 +288,12 @@ impl HaCKS {
 
     pub fn render_windowed_groups(&mut self, ui: &imgui::Ui) {
 
-        if self.menu_cache.is_none() {
+        if self.menu_cache.borrow().is_none() {
             return;
         }
     
 
-        let windowed: Vec<_> = self.windowed_groups
+        let windowed: Vec<_> = self.windowed_groups.borrow()
             .iter()
             .filter(|&(_, &is_open)| is_open)
             .map(|(path, _)| path.clone())
@@ -309,7 +309,7 @@ impl HaCKS {
                 self.render_group_window(ui, &window_title, &entries, &path);
             }
         }
-        self.menu_cache = Some(cache);
+        *self.menu_cache.borrow_mut() = Some(cache);
 
     }
 

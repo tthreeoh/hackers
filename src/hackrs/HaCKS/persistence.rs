@@ -95,7 +95,7 @@ impl HaCKS {
             }
 
             self.init_data = init_data;
-            self.menu_dirty = true;
+            self.menu_dirty = true.into();
         }
 
         pub fn reset_module<T: HaCK + 'static, F>(&mut self, create_modules_fn: F) -> bool
@@ -107,7 +107,7 @@ impl HaCKS {
                 for module in create_modules_fn() {
                     if module.borrow().nac_type_id() == type_id {
                         self.register_boxed(module);
-                        self.menu_dirty = true;
+                        self.menu_dirty = true.into();
                         return true;
                     }
                 }
@@ -123,7 +123,7 @@ impl HaCKS {
                 for module in create_modules_fn() {
                     if module.borrow().nac_type_id() == type_id {
                         self.register_boxed(module);
-                        self.menu_dirty = true;
+                        self.menu_dirty = true.into();
                         return true;
                     }
                 }

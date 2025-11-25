@@ -11,7 +11,7 @@ pub enum TickTarget {
 impl crate::HaCKS {
 
     #[cfg(feature = "gui")]
-    pub fn before_render(&mut self, ui: &Ui) {
+    pub fn before_render(&self, ui: &Ui) {
         let sorted = self.topological_sort_update();
         for type_id in sorted {
             if let Some(module) = self.hacs.get(&type_id) {
@@ -20,7 +20,7 @@ impl crate::HaCKS {
         }
     }
 
-    pub fn on_unload(&mut self) {
+    pub fn on_unload(&self) {
         let sorted = self.topological_sort_update();
         for type_id in sorted {
             if let Some(module) = self.hacs.get(&type_id) {
@@ -29,11 +29,11 @@ impl crate::HaCKS {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&self) {
         self.tick(TickTarget::All);
     }
 
-    pub fn tick(&mut self, target: TickTarget) {
+    pub fn tick(&self, target: TickTarget) {
         let sorted = self.topological_sort_update();
 
         for type_id in sorted {
@@ -56,11 +56,11 @@ impl crate::HaCKS {
         }
     }
 
-    pub fn tick_weight_range(&mut self, min: f32, max: f32) {
+    pub fn tick_weight_range(&self, min: f32, max: f32) {
         self.tick(TickTarget::WeightRange(min, max));
     }
 
-    pub fn tick_by_name(&mut self, name: &str) {
+    pub fn tick_by_name(&self, name: &str) {
         if let Some((&type_id, _)) = self
             .hacs
             .iter()
@@ -72,10 +72,9 @@ impl crate::HaCKS {
         }
     }
 
-    pub fn tick_all(&mut self) {
+    pub fn tick_all(&self) {
         for module in self.hacs.values() {
             module.borrow_mut().update(self);
         }
     }
 }
-

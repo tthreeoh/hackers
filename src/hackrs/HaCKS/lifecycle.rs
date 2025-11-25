@@ -13,7 +13,7 @@ impl HaCKS {
         self.init_data.insert(TypeId::of::<T>(), Box::new(data));
     }
 
-    pub fn init_all(&mut self) {
+    pub fn init_all(&self) {
         let sorted = self.topological_sort_update();
         for type_id in sorted {
             if let Some(module_rc) = self.hacs.get(&type_id) {
@@ -22,7 +22,7 @@ impl HaCKS {
         }
     }
     
-    pub fn exit_all(&mut self) {
+    pub fn exit_all(&self) {
         for module_rc in self.hacs.values() {
             module_rc.borrow_mut().exit();
         }

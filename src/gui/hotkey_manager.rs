@@ -16,7 +16,7 @@ impl HaCKS {
             for binding in module.hotkey_bindings() {
                 if let Some(hk) = binding.to_hotkey() {
                     let full_id = format!("{:?}::{}", type_id, binding.id);
-                    self.hotkey_manager.register(full_id, hk, binding.cooldown());
+                    self.hotkey_manager.borrow_mut().register(full_id, hk, binding.cooldown());
                 }
             }
         }
@@ -24,7 +24,7 @@ impl HaCKS {
     
     /// Dispatch triggered hotkeys to modules (call in render_draw)
     pub fn dispatch_hotkeys(&mut self, ui: &imgui::Ui) {
-        let triggered = self.hotkey_manager.poll_all(ui);
+        let triggered = self.hotkey_manager.borrow_mut().poll_all(ui);
     
         for full_id in triggered {
             // Parse "TypeId(...)::hotkey_name"
@@ -554,7 +554,7 @@ impl HaCKS {
             .collect();
     
         for (tid, hks) in bindings {
-            self.hotkey_manager.sync_from_bindings(tid, &hks);
+            self.hotkey_manager.borrow_mut().sync_from_bindings(tid, &hks);
         }
     }
     
@@ -564,7 +564,7 @@ impl HaCKS {
         if let Some(module_rc) = self.hacs.get(&tid) {
             let module = module_rc.borrow();
             let bindings = module.metadata().hotkeys.clone();
-            self.hotkey_manager.sync_from_bindings(tid, &bindings);
+            self.hotkey_manager.borrow_mut().sync_from_bindings(tid, &bindings);
         }
     }
     
@@ -572,7 +572,7 @@ impl HaCKS {
     /// Get triggered hotkeys for a specific module this frame
     pub fn get_module_triggers(&self, module_id: TypeId) -> Vec<String> {
         let prefix = format!("{:?}::", module_id);
-        self.triggered_hotkeys
+        self.triggered_hotkeys.borrow_mut()
             .iter()
             .filter_map(|full_id| {
                 full_id.strip_prefix(&prefix).map(|s| s.to_string())

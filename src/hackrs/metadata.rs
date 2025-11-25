@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 use imgui::{Key, Ui};
 use serde::{Deserialize, Serialize};
+use crate::access::{AccessControl, AccessLevel};
 
 use crate::gui::hotkey_manager::HotkeyManager;
 
@@ -85,6 +86,8 @@ pub struct HaCMetadata {
     #[serde(default = "default_window_size")]
     pub window_size: [f32; 2],
     pub auto_resize_window: bool,
+    #[serde(default)]
+    pub access_control: AccessControl,
 }
 
 impl Default for HaCMetadata {
@@ -106,6 +109,7 @@ impl Default for HaCMetadata {
             auto_resize_window: true,
             window_pos: default_window_pos(),
             window_size: default_window_size(),
+            access_control: AccessControl::new(AccessLevel::ReadWrite)
         }
     }
 }

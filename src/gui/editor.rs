@@ -6,14 +6,14 @@ use crate::HaCKS;
 
 impl HaCKS {
     pub fn render_debug_window(&mut self, ui: &Ui) {
-        if !self.show_debug_window {
+        if !*self.show_debug_window.borrow() {
             return;
         }
     
         let scale = ui.current_font_size() / 14.0;
     
         ui.window("Module Debug Viewer")
-            .opened(&mut self.show_debug_window)
+            .opened(&mut self.show_debug_window.borrow_mut())
             .size([600.0 * scale, 800.0 * scale], Condition::FirstUseEver)
             .position([100.0 * scale, 100.0 * scale], Condition::FirstUseEver)
             .build(|| {
@@ -102,7 +102,7 @@ impl HaCKS {
     pub fn render_metadata_editor_windows(&mut self, ui: &imgui::Ui) {
         let scale = ui.current_font_size()/14.0;
         // Visualization window
-        let mut show_viz = self.metadata_window_viz;
+        let mut show_viz = *self.metadata_window_viz.borrow();
         if show_viz {
             ui.window("Module Weight Visualization")
                 .opened(&mut show_viz)
@@ -113,11 +113,11 @@ impl HaCKS {
                 });
         }
         if !show_viz {
-            self.metadata_window_viz = show_viz;
+            *self.metadata_window_viz.borrow_mut() = show_viz;
         }
     
         // Metadata editor window
-        let mut show_metadata = self.metadata_window;
+        let mut show_metadata = *self.metadata_window.borrow();
         if show_metadata {
             ui.window("Module Metadata Editor")
                 .opened(&mut show_metadata)
@@ -128,7 +128,7 @@ impl HaCKS {
                 });
         }
         if !show_metadata {
-            self.metadata_window = show_metadata;
+            *self.metadata_window.borrow_mut() = show_metadata;
         }
     }
     
@@ -152,7 +152,7 @@ impl HaCKS {
         
     
             let mut to_remove = Vec::new();
-            for (path, is_open) in self.windowed_groups.iter() {
+            for (path, is_open) in self.windowed_groups.borrow_mut().iter() {
                 if *is_open {
                     let path_str = path.join(" > ");
                     ui.text(&path_str);
@@ -164,10 +164,10 @@ impl HaCKS {
                 }
             }
             for path in to_remove {
-                self.windowed_groups.insert(path, false);
+                self.windowed_groups.borrow_mut().insert(path, false);
             }
         
-            if self.windowed_groups.is_empty() || self.windowed_groups.values().all(|v| !v) {
+            if self.windowed_groups.borrow().is_empty() || self.windowed_groups.borrow().values().all(|v| !v) {
                 ui.text_disabled("(no undocked groups)");
             }
             
@@ -311,7 +311,7 @@ impl HaCKS {
                         ui.indent();
                         let hotkeys_modified = module.metadata_mut().render_hotkey_config_simple(ui);
                         if hotkeys_modified {
-                            self.hotkey_manager.sync_from_bindings(*type_id, &module.metadata().hotkeys);
+                            self.hotkey_manager.borrow_mut().sync_from_bindings(*type_id, &module.metadata().hotkeys);
                         }
                         ui.unindent();
                     }
@@ -341,20 +341,20 @@ impl HaCKS {
         
 
     pub fn render_weight_visualization_content(&mut self, ui: &Ui) {
-        if ui.radio_button_bool("Menu Order", self.viz_mode == 0) {
-            self.viz_mode = 0;
+        if ui.radio_button_bool("Menu Order", *self.viz_mode.borrow() == 0) {
+            *self.viz_mode.borrow_mut() = 0;
         }
         ui.same_line();
-        if ui.radio_button_bool("Window Order", self.viz_mode == 1) {
-            self.viz_mode = 1;
+        if ui.radio_button_bool("Window Order", *self.viz_mode.borrow() == 1) {
+            *self.viz_mode.borrow_mut() = 1;
         }
         ui.same_line();
-        if ui.radio_button_bool("Draw Order", self.viz_mode == 2) {
-            self.viz_mode = 2;
+        if ui.radio_button_bool("Draw Order", *self.viz_mode.borrow() == 2) {
+            *self.viz_mode.borrow_mut() = 2;
         }
         ui.same_line();
-        if ui.radio_button_bool("Update Order", self.viz_mode == 3) {
-            self.viz_mode = 3;
+        if ui.radio_button_bool("Update Order", *self.viz_mode.borrow() == 3) {
+            *self.viz_mode.borrow_mut() = 3;
         }
         
         ui.separator();
@@ -371,16 +371,16 @@ impl HaCKS {
             "Monochrome Blue",
             "Rainbow (Legacy)",
         ];
-        if let Some(_cb) = ui.begin_combo("##color_scheme", format!("Color Scheme: {}", color_schemes[self.color_scheme])) {
+        if let Some(_cb) = ui.begin_combo("##color_scheme", format!("Color Scheme: {}", color_schemes[*self.color_scheme.borrow()])) {
             for (idx, scheme) in color_schemes.iter().enumerate() {
-                if self.color_scheme == idx {
+                if *self.color_scheme.borrow() == idx {
                     ui.set_item_default_focus();
                 }
                 let clicked = ui.selectable_config(scheme)
-                    .selected(self.color_scheme == idx)
+                    .selected(*self.color_scheme.borrow_mut() == idx)
                     .build();
                 if clicked {
-                    self.color_scheme = idx;
+                    *self.color_scheme.borrow_mut() = idx;
                 }
             }
         }
@@ -392,7 +392,7 @@ impl HaCKS {
 
         for (id, module_rc) in self.hacs.iter() {
             let module = module_rc.borrow(); // immutable borrow for reading weights
-            let (weight, enabled) = match self.viz_mode {
+            let (weight, enabled) = match *self.viz_mode.borrow() {
                 0 => (module.menu_weight(), module.is_menu_enabled()),
                 1 => (module.window_weight(), module.is_window_enabled()),
                 2 => (module.draw_weight(), module.is_render_enabled()),
@@ -492,19 +492,19 @@ impl HaCKS {
     pub fn render_window_manager(&mut self, ui: &Ui) {
         // --- Manage Menus ---
         if ui.collapsing_header("Manage menus", TreeNodeFlags::empty()) {
-            if let Some(cache) = &self.menu_cache {
+            if let Some(cache) = &*self.menu_cache.borrow_mut() {
                 ui.text("Menu Groups: Check to undock grouped menus/sub menus");
     
                 for (top_name, _) in cache.top_level.iter() {
                     let path = vec![top_name.clone()];
-                    let is_windowed = self.windowed_groups
+                    let is_windowed = self.windowed_groups.borrow()
                         .get(&path)
                         .copied()
                         .unwrap_or(false);
     
                     let mut checked = is_windowed;
                     if ui.checkbox(&top_name, &mut checked) {
-                        self.windowed_groups.insert(path, checked);
+                        self.windowed_groups.borrow_mut().insert(path, checked);
                     }
                 }
             }

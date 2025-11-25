@@ -2,13 +2,14 @@ use std::any::{Any, TypeId};
 use serde::Deserialize;
 use erased_serde::Serialize as ErasedSerialize;
 use imgui::{Ui,DrawListMut};
-use crate::{HaCKS, HaCMetadata, metadata::HotkeyBinding};
+use crate::{HaCKS, HaCMetadata, hackrs::HaCKS::ModuleAccess, metadata::HotkeyBinding};
 
 #[allow(unused)]
 pub trait HaCK: ErasedSerialize + Send + 'static {
     fn name(&self) -> &str;
     fn nac_type_id(&self) -> TypeId { TypeId::of::<Self>() }
     fn update(&mut self, hacs: &HaCKS) {}
+    // fn update(&mut self, access: &mut ModuleAccess) {}
     fn render_draw(&mut self,ui: &Ui,
         // fonts: Option<Fonts>,
         draw_fg: &mut DrawListMut,

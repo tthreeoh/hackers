@@ -2,7 +2,7 @@ use crate::HaCKS;
 
 impl HaCKS {
     pub fn get_bar_color(&self, order: usize, active_count: usize, progress: f32) -> [f32; 4] {
-        match self.color_scheme {
+        match *self.color_scheme.borrow() {
             0 => {
                 // Warm-Cool gradient (orange → blue)
                 let r = 0.95 - progress * 0.8;

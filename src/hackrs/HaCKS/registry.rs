@@ -103,7 +103,7 @@ use crate::{
 impl crate::HaCKS {
     pub fn register<T: HaCK + 'static>(&mut self, module: T) {
         self.hacs.insert(TypeId::of::<T>(), Rc::new(RefCell::new(module)));
-        self.menu_dirty = true;
+        self.menu_dirty = true.into();
     }
     
     pub fn register_boxed(&mut self, module: Rc<RefCell<dyn HaCK>>) {
@@ -118,7 +118,7 @@ impl crate::HaCKS {
         let type_id = TypeId::of::<T>();
         if let Some(module_rc) = self.hacs.remove(&type_id) {
             module_rc.borrow_mut().on_unload();
-            self.menu_dirty = true;
+            self.menu_dirty = true.into();
             true
         } else {
             false
@@ -128,7 +128,7 @@ impl crate::HaCKS {
     pub fn eject_module_by_id(&mut self, type_id: TypeId) -> bool {
         if let Some(module_rc) = self.hacs.remove(&type_id) {
             module_rc.borrow_mut().on_unload();
-            self.menu_dirty = true;
+            self.menu_dirty = true.into();
             true
         } else {
             false

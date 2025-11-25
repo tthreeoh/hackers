@@ -1,33 +1,31 @@
 use std::any::TypeId;
+use std::cell::RefCell;
 
 #[derive(Debug, Clone)]
 pub enum HaCSEvent {
     /// Ask a module to open its window
     OpenWindow { module_id: TypeId },
-
     /// Ask a module to close its window
     CloseWindow { module_id: TypeId },
-
     /// Mark a group of modules as undocked (windowed)
     UndockGroup { path: Vec<String> },
-
     /// Mark a group as docked again (back into the menu)
     RedockGroup { path: Vec<String> },
-
     /// Rebuild the menu cache
     RebuildMenu,
 }
 
 impl crate::HaCKS {
     /// Queue an event to be handled later
-    pub fn emit(&mut self, event: HaCSEvent) {
-        self.event_bus.push(event);
+    pub fn emit(&self, event: HaCSEvent) {
+        // Use RefCell for interior mutability
+        self.event_bus.borrow_mut().push(event);
     }
 
     /// Handle and clear all queued events
-    pub fn process_events(&mut self) {
+    pub fn process_events(&self) {
         let mut events = Vec::new();
-        std::mem::swap(&mut events, &mut self.event_bus);
+        std::mem::swap(&mut events, &mut *self.event_bus.borrow_mut());
 
         for event in events {
             match event {
@@ -44,13 +42,13 @@ impl crate::HaCKS {
                     }
                 }
                 HaCSEvent::UndockGroup { path } => {
-                    self.windowed_groups.insert(path, true);
+                    self.windowed_groups.borrow_mut().insert(path, true);
                 }
                 HaCSEvent::RedockGroup { path } => {
-                    self.windowed_groups.remove(&path);
+                    self.windowed_groups.borrow_mut().remove(&path);
                 }
                 HaCSEvent::RebuildMenu => {
-                    self.menu_dirty = true;
+                    *self.menu_dirty.borrow_mut() = true;
                 }
             }
         }
