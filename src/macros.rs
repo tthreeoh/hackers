@@ -146,11 +146,11 @@ macro_rules! declare_and_register_hacs {
             $(
                 {
                     if let Some(hac_rc) = modules.get(&std::any::TypeId::of::<$module_path>()) {
-                        if let Ok(hac_ref) = hac_rc.borrow() {
-                            if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
-                                if let Ok(value) = serde_json::to_value(m) {
-                                    settings.insert($key.to_string(), value);
-                                }
+                        // FIXED: borrow() returns Ref directly, not Result
+                        let hac_ref = hac_rc.borrow();
+                        if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
+                            if let Ok(value) = serde_json::to_value(m) {
+                                settings.insert($key.to_string(), value);
                             }
                         }
                     }
