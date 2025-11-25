@@ -4,7 +4,9 @@ pub mod HaCKS;
 pub mod metadata;
 pub mod access;
 pub mod access_methods;
+pub mod sync;
 
 pub use access::{AccessLevel, AccessControl, AccessManager, AccessToken};
 pub use metadata::HaCMetadata;
 pub use hack::HaCK;
+pub use sync::*;

@@ -21,6 +21,7 @@ pub use iteration::*;
 pub use search::*;
 pub use events::*;
 
+use crate::SyncRegistry;
 use crate::access::AccessManager;
 use crate::gui::hotkey_manager::HotkeyManager;
 
@@ -40,7 +41,6 @@ pub struct HaCKS {
     pub hotkey_manager: RefCell<HotkeyManager>,
     pub triggered_hotkeys: RefCell<Vec<String>>,
     
-    // GUI state - needs RefCell for interior mutability
     pub show_debug_window: RefCell<bool>,
     pub windowed_groups: RefCell<HashMap<Vec<String>, bool>>,
     pub metadata_window: RefCell<bool>,
@@ -48,8 +48,8 @@ pub struct HaCKS {
     pub metadata_window_viz: RefCell<bool>,
     pub color_scheme: RefCell<usize>,
     
-    // Access control manager
     pub access_manager: RefCell<AccessManager>,
+    pub sync_registry: RefCell<Option<SyncRegistry>>,
 }
 
 #[allow(unused)]
@@ -70,6 +70,18 @@ impl HaCKS {
             metadata_window_viz: RefCell::new(false),
             color_scheme: RefCell::new(0),
             access_manager: RefCell::new(AccessManager::new()),
+            sync_registry: RefCell::new(None),
+        }
+    }
+
+    pub fn init_sync_registry(&self, registry: SyncRegistry) {
+        *self.sync_registry.borrow_mut() = Some(registry);
+    }
+    
+    /// Run all syncs
+    pub fn sync_modules(&self) {
+        if let Some(registry) = self.sync_registry.borrow().as_ref() {
+            registry.apply_all(self);
         }
     }
 

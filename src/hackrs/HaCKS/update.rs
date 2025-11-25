@@ -30,6 +30,7 @@ impl crate::HaCKS {
     }
 
     pub fn update(&self) {
+        self.sync_modules();
         self.tick(TickTarget::All);
     }
 
