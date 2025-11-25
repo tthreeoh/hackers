@@ -32,14 +32,15 @@ impl crate::HaCKS {
         for event in events {
             match event {
                 HaCSEvent::OpenWindow { module_id } => {
-                    if let Some(m) = self.hacs.get_mut(&module_id) {
+                    if let Some(m) = self.hacs.get(&module_id) {
+                        let mut m = m.borrow_mut();
                         m.set_show_window(true);
                         m.set_show_menu(false);
                     }
                 }
                 HaCSEvent::CloseWindow { module_id } => {
-                    if let Some(m) = self.hacs.get_mut(&module_id) {
-                        m.set_show_window(false);
+                    if let Some(m) = self.hacs.get(&module_id) {
+                        m.borrow_mut().set_show_window(false);
                     }
                 }
                 HaCSEvent::UndockGroup { path } => {

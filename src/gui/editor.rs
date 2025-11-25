@@ -9,7 +9,9 @@ impl HaCKS {
         if !self.show_debug_window {
             return;
         }
-        let scale = ui.current_font_size()/14.0;
+    
+        let scale = ui.current_font_size() / 14.0;
+    
         ui.window("Module Debug Viewer")
             .opened(&mut self.show_debug_window)
             .size([600.0 * scale, 800.0 * scale], Condition::FirstUseEver)
@@ -17,70 +19,85 @@ impl HaCKS {
             .build(|| {
                 ui.text_colored([1.0, 1.0, 0.0, 1.0], "Module Inspector");
                 ui.separator();
-                
-                // Sort modules by name for easier browsing
-                let mut modules: Vec<_> = self.hacs.iter().collect();
-                modules.sort_by(|a, b| {
-                    a.1.name().cmp(&b.1.name())
-                });
-                
-                for (type_id, module) in modules {
-                    let name = module.name().to_string();
-                    
+    
+                // --- First pass: collect (name, type_id) without borrowing modules later ---
+                let mut module_list: Vec<(String, TypeId)> = self.hacs
+                    .iter()
+                    .map(|(id, m_rc)| {
+                        let m = m_rc.borrow();
+                        (m.name().to_string(), *id)
+                    })
+                    .collect();
+    
+                module_list.sort_by(|a, b| a.0.cmp(&b.0));
+    
+                // --- Second pass: borrow modules one-by-one safely ---
+                for (name, type_id) in module_list {
+                    let module_rc = self.hacs.get(&type_id).unwrap();
+                    let module = module_rc.borrow(); // immutable borrow
+    
                     if ui.collapsing_header(&name, imgui::TreeNodeFlags::empty()) {
                         ui.indent();
-                        
-                        // Metadata section
-                        if let Some(_token) = ui.tree_node("Metadata") {
+    
+                        // --- Metadata tree ---
+                        if let Some(_t) = ui.tree_node("Metadata") {
                             let metadata = module.metadata();
+    
                             ui.text(format!("Name: {}", metadata.name));
                             ui.text(format!("Description: {}", metadata.description));
                             ui.text(format!("Category: {}", metadata.category));
                             ui.text(format!("Hotkey: {:?}", metadata.hotkeys));
+    
                             ui.separator();
+    
                             ui.text(format!("Menu Weight: {}", metadata.menu_weight));
                             ui.text(format!("Window Weight: {}", metadata.window_weight));
                             ui.text(format!("Draw Weight: {}", metadata.draw_weight));
                             ui.text(format!("Update Weight: {}", metadata.update_weight));
+    
                             ui.separator();
+    
                             ui.text(format!("Visible in GUI: {}", metadata.visible_in_gui));
                             ui.text(format!("Menu Enabled: {}", metadata.is_menu_enabled));
                             ui.text(format!("Window Enabled: {}", metadata.is_window_enabled));
                             ui.text(format!("Render Enabled: {}", metadata.is_render_enabled));
                             ui.text(format!("Update Enabled: {}", metadata.is_update_enabled));
+    
                             ui.text(format!("Window Pos: {:?}", metadata.window_pos));
                             ui.text(format!("Window Size: {:?}", metadata.window_size));
                         }
-                        
-                        // Serialize the entire module as JSON
-                        if let Some(_token) = ui.tree_node("Module Data (JSON)") {
+    
+                        // --- JSON tree ---
+                        if let Some(_t) = ui.tree_node("Module Data (JSON)") {
                             match module.to_json_data_only() {
                                 Ok(json) => {
-                                    let json_str = serde_json::to_string_pretty(&json)
+                                    let json_pretty = serde_json::to_string_pretty(&json)
                                         .unwrap_or_else(|_| "Failed to format JSON".to_string());
-                                    
-                                    // Display in a scrollable child window
+    
                                     ui.child_window("##json_scroll")
                                         .size([550.0 * scale, 400.0 * scale])
                                         .build(|| {
-                                            ui.text_wrapped(&json_str);
+                                            ui.text_wrapped(&json_pretty);
                                         });
                                 }
                                 Err(e) => {
-                                    ui.text_colored([1.0, 0.0, 0.0, 1.0], format!("Serialization error: {}", e));
+                                    ui.text_colored(
+                                        [1.0, 0.0, 0.0, 1.0],
+                                        format!("Serialization error: {}", e),
+                                    );
                                 }
                             }
                         }
-                        
-                        // TypeId for reference
-                        ui.text_colored([0.5, 0.5, 0.5, 1.0], format!("TypeId: {:?}", type_id));
-                        
+    
+                        ui.text_colored([0.6, 0.6, 0.6, 1.0], format!("TypeId: {:?}", type_id));
+    
                         ui.unindent();
                         ui.separator();
                     }
                 }
             });
     }
+    
     
     pub fn render_metadata_editor_windows(&mut self, ui: &imgui::Ui) {
         let scale = ui.current_font_size()/14.0;
@@ -128,10 +145,12 @@ impl HaCKS {
     }
         
     pub fn render_metadata_editor_window_content(&mut self, ui: &imgui::Ui) {
+        // --- Window Manager ---
         if ui.collapsing_header("Window Manager", imgui::TreeNodeFlags::empty()) {
-            ui.indent();
-            ui.text_colored([0.7, 0.7, 1.0, 1.0], "Undocked Groups:");
-            
+        ui.indent();
+        ui.text_colored([0.7, 0.7, 1.0, 1.0], "Undocked Groups:");
+        
+    
             let mut to_remove = Vec::new();
             for (path, is_open) in self.windowed_groups.iter() {
                 if *is_open {
@@ -144,11 +163,10 @@ impl HaCKS {
                     }
                 }
             }
-            
             for path in to_remove {
                 self.windowed_groups.insert(path, false);
             }
-            
+        
             if self.windowed_groups.is_empty() || self.windowed_groups.values().all(|v| !v) {
                 ui.text_disabled("(no undocked groups)");
             }
@@ -156,7 +174,8 @@ impl HaCKS {
             ui.unindent();
             ui.separator();
         }
-    
+        
+        // --- Legend ---
         if ui.collapsing_header("Legend", imgui::TreeNodeFlags::empty()) {
             ui.text_colored([0.5, 0.5, 1.0, 1.0], "Higher weight = runs/renders first");
             ui.text_colored([1.0, 1.0, 0.5, 1.0], "Update enabled = module.update() runs");
@@ -164,78 +183,69 @@ impl HaCKS {
             ui.separator();
         }
         
+        // --- Collect module list (immutable borrow) ---
         let mut module_list: Vec<(String, TypeId)> = self.hacs
             .iter()
-            .map(|(id, m)| (m.name().to_string(), *id))
+            .map(|(id, m_rc)| {
+                let m = m_rc.borrow();
+                (m.name().to_string(), *id)
+            })
             .collect();
         module_list.sort_by(|a, b| a.0.cmp(&b.0));
         
+        // --- Iterate modules ---
         for (idx, (name, type_id)) in module_list.iter().enumerate() {
-            if let Some(module) = self.hacs.get_mut(type_id) {
+            // --- Mutable borrow block ---
+            {
+                let module_rc = self.hacs.get(type_id).unwrap();
+                let mut module = module_rc.borrow_mut();
                 let id_token = ui.push_id_usize(idx);
-                
+        
                 if ui.collapsing_header(&name, imgui::TreeNodeFlags::empty()) {
                     ui.indent();
-                    
                     ui.columns(2, "metadata", true);
                     ui.set_column_width(0, 150.0);
-                    
+        
                     // Menu Weight
                     ui.text("Menu Weight:");
                     ui.next_column();
                     let mut menu_weight = module.menu_weight();
                     ui.set_next_item_width(-1.0);
-                    if ui.input_float("##mw", &mut menu_weight)
-                        .step(0.1)
-                        .step_fast(1.0)
-                        .build() 
-                    {
+                    if ui.input_float("##mw", &mut menu_weight).step(0.1).step_fast(1.0).build() {
                         module.set_menu_weight(menu_weight.max(0.0));
                     }
                     ui.next_column();
-                    
+        
                     // Window Weight
                     ui.text("Window Weight:");
                     ui.next_column();
-                    let mut weight_render = module.window_weight();
+                    let mut window_weight = module.window_weight();
                     ui.set_next_item_width(-1.0);
-                    if ui.input_float("##rw", &mut weight_render)
-                        .step(0.1)
-                        .step_fast(1.0)
-                        .build() 
-                    {
-                        module.set_window_weight(weight_render.max(0.0));
+                    if ui.input_float("##rw", &mut window_weight).step(0.1).step_fast(1.0).build() {
+                        module.set_window_weight(window_weight.max(0.0));
                     }
                     ui.next_column();
-    
+        
                     // Draw Weight
                     ui.text("Draw Weight:");
                     ui.next_column();
                     let mut draw_weight = module.draw_weight();
                     ui.set_next_item_width(-1.0);
-                    if ui.input_float("##dw", &mut draw_weight)
-                        .step(0.1)
-                        .step_fast(1.0)
-                        .build() 
-                    {
+                    if ui.input_float("##dw", &mut draw_weight).step(0.1).step_fast(1.0).build() {
                         module.set_draw_weight(draw_weight.max(0.0));
                     }
                     ui.next_column();
-                    
+        
                     // Update Weight
                     ui.text("Update Weight:");
                     ui.next_column();
                     let mut update_weight = module.update_weight();
                     ui.set_next_item_width(-1.0);
-                    if ui.input_float("##uw", &mut update_weight)
-                        .step(0.1)
-                        .step_fast(1.0)
-                        .build() 
-                    {
+                    if ui.input_float("##uw", &mut update_weight).step(0.1).step_fast(1.0).build() {
                         module.set_update_weight(update_weight.max(0.0));
                     }
                     ui.next_column();
-                    
+        
                     // Update Enabled
                     ui.text("Update Enabled:");
                     ui.next_column();
@@ -244,7 +254,7 @@ impl HaCKS {
                         module.set_update_enabled(update_enabled);
                     }
                     ui.next_column();
-                    
+        
                     // Render Enabled
                     ui.text("Render Enabled:");
                     ui.next_column();
@@ -253,7 +263,7 @@ impl HaCKS {
                         module.set_render_enabled(render_enabled);
                     }
                     ui.next_column();
-                    
+        
                     // Menu Enabled
                     ui.text("Menu Enabled:");
                     ui.next_column();
@@ -262,7 +272,7 @@ impl HaCKS {
                         module.set_show_menu(menu_enabled);
                     }
                     ui.next_column();
-                    
+        
                     // Window Enabled
                     ui.text("Window Enabled:");
                     ui.next_column();
@@ -271,27 +281,20 @@ impl HaCKS {
                         module.set_show_window(window_enabled);
                     }
                     ui.next_column();
-                    
-                    // Window Position
+        
+                    // Window Position & Size
                     ui.text("Window Position:");
                     ui.next_column();
                     ui.set_next_item_width(-1.0);
-                    {
-                        let metadata = module.metadata_mut();
-                        ui.input_float2("##wpos", &mut metadata.window_pos).build();
-                    }
+                    ui.input_float2("##wpos", &mut module.metadata_mut().window_pos).build();
                     ui.next_column();
-
-                    // Window Size
+        
                     ui.text("Window Size:");
                     ui.next_column();
                     ui.set_next_item_width(-1.0);
-                    {
-                        let metadata = module.metadata_mut();
-                        ui.input_float2("##wsize", &mut metadata.window_size).build();
-                    }
+                    ui.input_float2("##wsize", &mut module.metadata_mut().window_size).build();
                     ui.next_column();
-                    
+        
                     // Auto Resize Window
                     ui.text("Auto Resize:");
                     ui.next_column();
@@ -300,44 +303,42 @@ impl HaCKS {
                         module.metadata_mut().auto_resize_window = auto_resize;
                     }
                     ui.next_column();
-                    
+        
                     ui.columns(1, "", false);
-                    
-                    // Hotkeys section
+        
+                    // Hotkeys
                     if ui.collapsing_header("Hotkeys", imgui::TreeNodeFlags::empty()) {
                         ui.indent();
-                        
-                        // Render hotkey config UI
-                        let hotkeys_modified = module.metadata_mut()
-                            .render_hotkey_config_simple(ui);
-                        
+                        let hotkeys_modified = module.metadata_mut().render_hotkey_config_simple(ui);
                         if hotkeys_modified {
-                            // Re-sync this module's hotkeys with the global manager
-                            let bindings = module.metadata().hotkeys.clone();
-                            self.hotkey_manager.sync_from_bindings(*type_id, &bindings);
+                            self.hotkey_manager.sync_from_bindings(*type_id, &module.metadata().hotkeys);
                         }
-                        
                         ui.unindent();
                     }
-                    
-                    // Dependencies
-                    let deps = module.update_dependencies();
-                    if !deps.is_empty() {
-                        ui.text_colored([0.7, 0.7, 0.7, 1.0], "Dependencies:");
-                        ui.same_line();
-                        let dep_names: Vec<String> = deps.iter()
-                            .filter_map(|id| self.hacs.get(id).map(|m| m.name().to_string()))
-                            .collect();
-                        ui.text(dep_names.join(", "));
-                    }
-                    
+        
                     ui.unindent();
                 }
-                
+        
                 id_token.pop();
+            } // <- mutable borrow ends here
+        
+            // --- Immutable borrow block for dependencies ---
+            {
+                let deps = self.hacs.get(type_id).unwrap().borrow().update_dependencies();
+                if !deps.is_empty() {
+                    ui.text_colored([0.7, 0.7, 0.7, 1.0], "Dependencies:");
+                    ui.same_line();
+                    let dep_names: Vec<String> = deps.iter()
+                        .filter_map(|id| self.hacs.get(id).map(|m_rc| m_rc.borrow().name().to_string()))
+                        .collect();
+                    ui.text(dep_names.join(", "));
+                }
             }
         }
+    
+        
     }
+        
 
     pub fn render_weight_visualization_content(&mut self, ui: &Ui) {
         if ui.radio_button_bool("Menu Order", self.viz_mode == 0) {
@@ -386,9 +387,11 @@ impl HaCKS {
         
         ui.separator();
         
-        let mut sorted_modules = Vec::new();
         
-        for (id, module) in self.hacs.iter() {
+        let mut sorted_modules: Vec<(String, f32, TypeId)> = Vec::new();
+
+        for (id, module_rc) in self.hacs.iter() {
+            let module = module_rc.borrow(); // immutable borrow for reading weights
             let (weight, enabled) = match self.viz_mode {
                 0 => (module.menu_weight(), module.is_menu_enabled()),
                 1 => (module.window_weight(), module.is_window_enabled()),
@@ -396,13 +399,16 @@ impl HaCKS {
                 3 => (module.update_weight(), module.is_update_enabled()),
                 _ => (0.0, false),
             };
-            
             sorted_modules.push((
                 module.name().to_string(),
                 if enabled { weight } else { -1.0 },
                 *id,
             ));
         }
+
+        // Optionally, sort descending by weight
+        sorted_modules.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
         
         sorted_modules.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         
@@ -484,43 +490,54 @@ impl HaCKS {
     }
 
     pub fn render_window_manager(&mut self, ui: &Ui) {
-        if ui.collapsing_header("Manage menus", TreeNodeFlags::empty()){
-            // Show all available menu groups
+        // --- Manage Menus ---
+        if ui.collapsing_header("Manage menus", TreeNodeFlags::empty()) {
             if let Some(cache) = &self.menu_cache {
                 ui.text("Menu Groups: Check to undock grouped menus/sub menus");
-                for (top_name, _entries) in cache.top_level.iter() {
+    
+                for (top_name, _) in cache.top_level.iter() {
                     let path = vec![top_name.clone()];
                     let is_windowed = self.windowed_groups
                         .get(&path)
                         .copied()
                         .unwrap_or(false);
-                    
+    
                     let mut checked = is_windowed;
-                    if ui.checkbox(&format!("{}", top_name), &mut checked) {
+                    if ui.checkbox(&top_name, &mut checked) {
                         self.windowed_groups.insert(path, checked);
                     }
                 }
             }
         }
-        
-        if ui.collapsing_header("Module Windows", TreeNodeFlags::empty()){
-            // Individual module windows
+    
+        // --- Module Windows ---
+        if ui.collapsing_header("Module Windows", TreeNodeFlags::empty()) {
             ui.text("Modules: Check to undock");
-            let mut module_list: Vec<(String, std::any::TypeId)> = self.hacs
+    
+            // 1. Immutable borrow: collect names + TypeIds
+            let mut module_list: Vec<(String, TypeId)> = self.hacs
                 .iter()
-                .map(|(id, m)| (m.name().to_string(), *id))
+                .map(|(id, m_rc)| {
+                    let m = m_rc.borrow();
+                    (m.name().to_string(), *id)
+                })
                 .collect();
+    
             module_list.sort_by(|a, b| a.0.cmp(&b.0));
-            
+    
+            // 2. Now it's safe to mut-borrow individual entries
             for (name, type_id) in module_list {
-                if let Some(module) = self.hacs.get_mut(&type_id) {
+                if let Some(module_rc) = self.hacs.get(&type_id) {
+                    let mut module = module_rc.borrow_mut();
+    
                     let mut checked = module.is_window_enabled();
-                    if ui.checkbox(&format!("{}", name), &mut checked) {
+                    if ui.checkbox(&name, &mut checked) {
                         module.set_show_window(checked);
                     }
                 }
             }
         }
     }
+    
 
 }

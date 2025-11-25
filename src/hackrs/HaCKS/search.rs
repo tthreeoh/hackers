@@ -11,15 +11,16 @@ impl HaCKS {
         let mut menu_tree: BTreeMap<Vec<String>, Vec<TypeId>> = BTreeMap::new();
         
         let type_ids: Vec<_> = self.hacs.keys().copied().collect();
-        let sorted = self.sort_by_weight(type_ids, |m| m.menu_weight());  // USE MENU WEIGHT
+        let sorted = self.sort_by_weight(type_ids, |m_rc| m_rc.borrow().menu_weight()); // borrow for RefCell
         
         for type_id in sorted {
-            if let Some(module) = self.hacs.get(&type_id) {
+            if let Some(module_rc) = self.hacs.get(&type_id) {
+                let module = module_rc.borrow();
                 let path: Vec<String> = module.menu_path().iter().map(|s| s.to_string()).collect();
                 menu_tree.entry(path).or_default().push(type_id);
             }
         }
-    
+        
         let mut top_level: BTreeMap<String, Vec<(Vec<String>, TypeId)>> = BTreeMap::new();
         for (path, ids) in menu_tree {
             if let Some(first) = path.first() {
@@ -28,9 +29,11 @@ impl HaCKS {
                 }
             }
         }
-    
+        
         MenuCache { top_level }
+        
     }
+        
 
     pub fn find_entries_for_path(&self, cache: &MenuCache, target_path: &[String]) -> Vec<(Vec<String>, TypeId)> {
         if target_path.is_empty() {

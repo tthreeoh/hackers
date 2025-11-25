@@ -122,27 +122,28 @@ macro_rules! declare_and_register_hacs {
             $crate::impl_hac_settings!($module_path, $key);
         )*
 
-        // Create modules
-        pub fn create_modules() -> Vec<Box<dyn $crate::hack::HaCK>> {
+        // Create modules (Rc<RefCell<_>>)
+        pub fn create_modules() -> Vec<Rc<RefCell<dyn $crate::HaCK>>> {
             vec![
                 $(
                     $(#[$attr])*
-                    Box::new(<$module_path>::default())
+                    Rc::new(RefCell::new(<$module_path>::default())) as Rc<RefCell<dyn $crate::HaCK>>
                 ),*
             ]
         }
 
         // Save settings
         pub fn save_all_settings(
-            modules: &std::collections::HashMap<std::any::TypeId, Box<dyn $crate::HaCK>>
+            modules: &std::collections::HashMap<std::any::TypeId, Rc<RefCell<dyn $crate::HaCK>>>
         ) -> std::collections::HashMap<String, $crate::serde_json::Value> {
             let mut settings = std::collections::HashMap::new();
-            
+
             $(
                 $(#[$attr])*
                 {
-                    if let Some(HaC) = modules.get(&std::any::TypeId::of::<$module_path>()) {
-                        if let Some(m) = HaC.as_any().downcast_ref::<$module_path>() {
+                    if let Some(hac_rc) = modules.get(&std::any::TypeId::of::<$module_path>()) {
+                        let hac_ref = hac_rc.borrow();
+                        if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
                             if let Ok(value) = $crate::serde_json::to_value(m) {
                                 settings.insert($key.to_string(), value);
                             }
@@ -150,32 +151,31 @@ macro_rules! declare_and_register_hacs {
                     }
                 }
             )*
-            
+
             settings
         }
 
         // Load settings
         pub fn load_all_settings(
             settings: &std::collections::HashMap<String, $crate::serde_json::Value>
-        ) -> Vec<Box<dyn $crate::hack::HaCK>> {
-            use $crate::hack::HaCK as _;
+        ) -> Vec<Rc<RefCell<dyn $crate::HaCK>>> {
+            use $crate::HaCK as _;
             vec![
                 $(
                     $(#[$attr])*
-                    Box::new({
+                    Rc::new(RefCell::new({
                         let mut module = settings.get($key)
-                            .and_then(|v| {
-                                $crate::serde_json::from_value::<$module_path>(v.clone()).ok()
-                            })
+                            .and_then(|v| $crate::serde_json::from_value::<$module_path>(v.clone()).ok())
                             .unwrap_or_default();
                         module.post_load_init();
                         module
-                    })
+                    })) as Rc<RefCell<dyn $crate::HaCK>>
                 ),*
             ]
         }
     };
 }
+
 
 #[macro_export]
 macro_rules! impl_nac_for_hacs {

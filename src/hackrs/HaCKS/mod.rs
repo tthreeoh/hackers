@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 #[allow(unused)]
 use std::rc::Rc;
 #[allow(unused)]
@@ -25,8 +26,8 @@ use crate::hack::HaCK;
 #[allow(unused)]
 pub struct HaCKS {
     pub event_bus: Vec<HaCSEvent>,
-    pub hacs: HashMap<TypeId, Box<dyn HaCK>>,
-    pub loaded_libs: Vec<DynamicHaC>,
+    pub hacs: HashMap<TypeId, Rc<RefCell<dyn HaCK>>>,
+    // pub loaded_libs: Vec<DynamicHaC>,
     pub init_data: HashMap<TypeId, Box<dyn Any + Send>>,
     pub menu_dirty: bool,
     pub menu_cache: Option<MenuCache>,
@@ -48,7 +49,7 @@ impl HaCKS {
         HaCKS {
             event_bus: Vec::new(),
             hacs: HashMap::new(),
-            loaded_libs: Vec::new(),
+            // loaded_libs: Vec::new(),
             init_data: HashMap::new(),
             menu_cache: None,
             menu_dirty: false,
@@ -64,30 +65,31 @@ impl HaCKS {
         }
     }
 
-    pub fn get_module<T: HaCK + 'static>(&self) -> Option<&T> {
-        self.hacs.get(&TypeId::of::<T>())?
-            .as_ref()
-            .as_any()
-            .downcast_ref::<T>()
+    pub fn get_module<T: HaCK + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
+        self.hacs.get(&TypeId::of::<T>()).map(|rc| {
+            std::cell::Ref::map(rc.borrow(), |m| {
+                m.as_any().downcast_ref::<T>().unwrap()
+            })
+        })
     }
 
-    /// Mutable reference to a module of type `T`.
-    pub fn get_module_mut<T: HaCK + 'static>(&mut self) -> Option<&mut T> {
-        self.hacs.get_mut(&TypeId::of::<T>())?
-            .as_mut()
-            .as_any_mut()
-            .downcast_mut::<T>()
+    pub fn get_module_mut<T: HaCK + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
+        self.hacs.get(&TypeId::of::<T>()).map(|rc| {
+            std::cell::RefMut::map(rc.borrow_mut(), |m| {
+                m.as_any_mut().downcast_mut::<T>().unwrap()
+            })
+        })
     }
 
-    /// Extract a specific piece of readonly state from a module.
     pub fn get_state<T: HaCK + 'static, R, F: FnOnce(&T) -> R>(&self, f: F) -> Option<R> {
-        self.get_module::<T>().map(f)
-    }
-
-    /// Mutably operate on a module safely.
-    pub fn with_module_mut<T: HaCK + 'static, F: FnOnce(&mut T)>(&mut self, f: F) {
-        if let Some(m) = self.get_module_mut::<T>() {
-            f(m);
+        self.get_module::<T>().map(|m| f(&*m))
         }
-    }
+        
+        
+        /// Mutably operate on a module safely.
+        pub fn with_module_mut<T: HaCK + 'static, F: FnOnce(&mut T)>(&self, f: F) {
+            if let Some(mut m) = self.get_module_mut::<T>() {
+                f(&mut *m);
+            }
+        }
 }

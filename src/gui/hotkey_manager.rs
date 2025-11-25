@@ -10,7 +10,8 @@ use crate::{HaCK, HaCKS, HaCMetadata};
 impl HaCKS {
     /// Sync all module hotkeys to the manager (call on init/module load)
     pub fn sync_hotkeys(&mut self) {
-        for module in self.hacs.values() {
+        for module_rc in self.hacs.values() {
+            let module = module_rc.borrow();
             let type_id = module.nac_type_id();
             for binding in module.hotkey_bindings() {
                 if let Some(hk) = binding.to_hotkey() {
@@ -21,20 +22,18 @@ impl HaCKS {
         }
     }
     
-    
     /// Dispatch triggered hotkeys to modules (call in render_draw)
     pub fn dispatch_hotkeys(&mut self, ui: &imgui::Ui) {
         let triggered = self.hotkey_manager.poll_all(ui);
-        
+    
         for full_id in triggered {
             // Parse "TypeId(...)::hotkey_name"
             if let Some((type_hash, hotkey_id)) = full_id.split_once("::") {
                 // Find module by matching type_id debug string
-                let type_ids: Vec<_> = self.hacs.keys().copied().collect();
-                for tid in type_ids {
+                for tid in self.hacs.keys() {
                     if format!("{:?}", tid) == type_hash {
-                        if let Some(module) = self.hacs.get_mut(&tid) {
-                            module.on_hotkey(hotkey_id);
+                        if let Some(module_rc) = self.hacs.get(tid) {
+                            module_rc.borrow_mut().on_hotkey(hotkey_id);
                         }
                         break;
                     }
@@ -42,6 +41,7 @@ impl HaCKS {
             }
         }
     }
+    
 
 
 }
@@ -547,9 +547,12 @@ impl HaCKS {
     pub fn sync_all_hotkeys(&mut self) {
         let bindings: Vec<_> = self.hacs
             .iter()
-            .map(|(&tid, m)| (tid, m.metadata().hotkeys.clone()))
+            .map(|(&tid, m_rc)| {
+                let m = m_rc.borrow();
+                (tid, m.metadata().hotkeys.clone())
+            })
             .collect();
-        
+    
         for (tid, hks) in bindings {
             self.hotkey_manager.sync_from_bindings(tid, &hks);
         }
@@ -558,11 +561,13 @@ impl HaCKS {
     /// Sync a single module's hotkeys (call after config UI changes)
     pub fn sync_module_hotkeys<T: 'static>(&mut self) {
         let tid = TypeId::of::<T>();
-        if let Some(module) = self.hacs.get(&tid) {
+        if let Some(module_rc) = self.hacs.get(&tid) {
+            let module = module_rc.borrow();
             let bindings = module.metadata().hotkeys.clone();
             self.hotkey_manager.sync_from_bindings(tid, &bindings);
         }
     }
+    
     
     /// Get triggered hotkeys for a specific module this frame
     pub fn get_module_triggers(&self, module_id: TypeId) -> Vec<String> {
