@@ -110,6 +110,12 @@ macro_rules! declare_and_register_hacs {
             $mod_name:ident => $module_path:path, $key:literal
         ),* $(,)?
     ) => {
+        // Import necessary types
+        use std::rc::Rc;
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        use $crate::serde_json;
+
         // Declare submodules
         $(
             $(#[$attr])*
@@ -134,18 +140,19 @@ macro_rules! declare_and_register_hacs {
 
         // Save settings
         pub fn save_all_settings(
-            modules: &std::collections::HashMap<std::any::TypeId, Rc<RefCell<dyn $crate::HaCK>>>
-        ) -> std::collections::HashMap<String, $crate::serde_json::Value> {
-            let mut settings = std::collections::HashMap::new();
+            modules: &HashMap<std::any::TypeId, Rc<RefCell<dyn $crate::HaCK>>>
+        ) -> HashMap<String, serde_json::Value> {
+            let mut settings = HashMap::new();
 
             $(
                 $(#[$attr])*
                 {
                     if let Some(hac_rc) = modules.get(&std::any::TypeId::of::<$module_path>()) {
-                        let hac_ref = hac_rc.borrow();
-                        if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
-                            if let Ok(value) = $crate::serde_json::to_value(m) {
-                                settings.insert($key.to_string(), value);
+                        if let Ok(hac_ref) = hac_rc.try_access_mut() {
+                            if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
+                                if let Ok(value) = serde_json::to_value(m) {
+                                    settings.insert($key.to_string(), value);
+                                }
                             }
                         }
                     }
@@ -157,7 +164,7 @@ macro_rules! declare_and_register_hacs {
 
         // Load settings
         pub fn load_all_settings(
-            settings: &std::collections::HashMap<String, $crate::serde_json::Value>
+            settings: &HashMap<String, serde_json::Value>
         ) -> Vec<Rc<RefCell<dyn $crate::HaCK>>> {
             use $crate::HaCK as _;
             vec![
@@ -165,7 +172,7 @@ macro_rules! declare_and_register_hacs {
                     $(#[$attr])*
                     Rc::new(RefCell::new({
                         let mut module = settings.get($key)
-                            .and_then(|v| $crate::serde_json::from_value::<$module_path>(v.clone()).ok())
+                            .and_then(|v| serde_json::from_value::<$module_path>(v.clone()).ok())
                             .unwrap_or_default();
                         module.post_load_init();
                         module
