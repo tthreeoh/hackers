@@ -110,7 +110,7 @@ macro_rules! declare_and_register_hacs {
             $mod_name:ident => $module_path:path, $key:literal
         ),* $(,)?
     ) => {
-        // Import necessary types
+        // Import necessary types at the top level
         use std::rc::Rc;
         use std::cell::RefCell;
         use std::collections::HashMap;
@@ -131,13 +131,12 @@ macro_rules! declare_and_register_hacs {
         pub fn create_modules() -> Vec<Rc<RefCell<dyn $crate::HaCK>>> {
             vec![
                 $(
-                    // No attributes on expressions
                     Rc::new(RefCell::new(<$module_path>::default())) as Rc<RefCell<dyn $crate::HaCK>>
                 ),*
             ]
         }
 
-        // Save settings
+        // Save settings - Updated for Rc<RefCell<_>>
         pub fn save_all_settings(
             modules: &HashMap<std::any::TypeId, Rc<RefCell<dyn $crate::HaCK>>>
         ) -> HashMap<String, serde_json::Value> {
@@ -146,7 +145,7 @@ macro_rules! declare_and_register_hacs {
             $(
                 {
                     if let Some(hac_rc) = modules.get(&std::any::TypeId::of::<$module_path>()) {
-                        // FIXED: borrow() returns Ref directly, not Result
+                        // borrow() returns Ref directly, not Result
                         let hac_ref = hac_rc.borrow();
                         if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
                             if let Ok(value) = serde_json::to_value(m) {
@@ -160,14 +159,13 @@ macro_rules! declare_and_register_hacs {
             settings
         }
 
-        // Load settings
+        // Load settings - Updated for Rc<RefCell<_>>
         pub fn load_all_settings(
             settings: &HashMap<String, serde_json::Value>
         ) -> Vec<Rc<RefCell<dyn $crate::HaCK>>> {
             use $crate::HaCK as _;
             vec![
                 $(
-                    // No attributes on expressions
                     Rc::new(RefCell::new({
                         let mut module = settings.get($key)
                             .and_then(|v| serde_json::from_value::<$module_path>(v.clone()).ok())
