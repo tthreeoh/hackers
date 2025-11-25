@@ -116,15 +116,14 @@ macro_rules! declare_and_register_hacs {
         use std::collections::HashMap;
         use $crate::serde_json;
 
-        // Declare submodules
+        // Declare submodules (attributes only go here)
         $(
             $(#[$attr])*
             pub mod $mod_name;
         )*
 
-        // Implement HaC settings
+        // Implement HaC settings (no attributes here)
         $(
-            $(#[$attr])*
             $crate::impl_hac_settings!($module_path, $key);
         )*
 
@@ -132,7 +131,7 @@ macro_rules! declare_and_register_hacs {
         pub fn create_modules() -> Vec<Rc<RefCell<dyn $crate::HaCK>>> {
             vec![
                 $(
-                    $(#[$attr])*
+                    // No attributes on expressions
                     Rc::new(RefCell::new(<$module_path>::default())) as Rc<RefCell<dyn $crate::HaCK>>
                 ),*
             ]
@@ -145,10 +144,9 @@ macro_rules! declare_and_register_hacs {
             let mut settings = HashMap::new();
 
             $(
-                $(#[$attr])*
                 {
                     if let Some(hac_rc) = modules.get(&std::any::TypeId::of::<$module_path>()) {
-                        if let Ok(hac_ref) = hac_rc.borrow() {
+                        if let Ok(hac_ref) = hac_rc.try_access_mut() {
                             if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
                                 if let Ok(value) = serde_json::to_value(m) {
                                     settings.insert($key.to_string(), value);
@@ -169,7 +167,7 @@ macro_rules! declare_and_register_hacs {
             use $crate::HaCK as _;
             vec![
                 $(
-                    $(#[$attr])*
+                    // No attributes on expressions
                     Rc::new(RefCell::new({
                         let mut module = settings.get($key)
                             .and_then(|v| serde_json::from_value::<$module_path>(v.clone()).ok())
