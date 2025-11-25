@@ -148,7 +148,7 @@ macro_rules! declare_and_register_hacs {
                 $(#[$attr])*
                 {
                     if let Some(hac_rc) = modules.get(&std::any::TypeId::of::<$module_path>()) {
-                        if let Ok(hac_ref) = hac_rc.try_access_mut() {
+                        if let Ok(hac_ref) = hac_rc.borrow() {
                             if let Some(m) = hac_ref.as_any().downcast_ref::<$module_path>() {
                                 if let Ok(value) = serde_json::to_value(m) {
                                     settings.insert($key.to_string(), value);
