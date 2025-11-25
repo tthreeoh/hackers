@@ -148,3 +148,43 @@ impl SyncRegistry {
         }
     }
 }
+
+pub struct SyncRegistryBuilder {
+    registry: SyncRegistry,
+}
+
+impl SyncRegistryBuilder {
+    pub fn new() -> Self {
+        Self {
+            registry: SyncRegistry::new(),
+        }
+    }
+    
+    /// Fluent API for one-way sync
+    pub fn sync<S, T>(mut self, sync_fn: impl Fn(&S, &mut T) + Send + 'static) -> Self
+    where
+        S: crate::HaCK + 'static,
+        T: crate::HaCK + 'static,
+    {
+        self.registry.register_one_way(sync_fn);
+        self
+    }
+    
+    /// Fluent API for bidirectional sync
+    pub fn sync_bidirectional<A, B>(
+        mut self,
+        a_to_b: impl Fn(&A, &mut B) + Send + 'static,
+        b_to_a: impl Fn(&B, &mut A) + Send + 'static,
+    ) -> Self
+    where
+        A: crate::HaCK + 'static,
+        B: crate::HaCK + 'static,
+    {
+        self.registry.register_bidirectional(a_to_b, b_to_a);
+        self
+    }
+    
+    pub fn build(self) -> SyncRegistry {
+        self.registry
+    }
+}
