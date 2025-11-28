@@ -1,12 +1,11 @@
 use std::{any::TypeId, cell::RefCell, rc::Rc};
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use libloading::{Library, Symbol};
+// use anyhow::Result;
+// use serde::{Deserialize, Serialize};
+// use std::path::Path;
+// use libloading::{Library, Symbol};
 
+use crate::hack::HaCK;
 
-use crate::{
-    hack::HaCK};
 
 // #[allow(unused,improper_ctypes_definitions)]
 // type CreateHaCFn = unsafe extern "C" fn() -> *mut dyn HaCK;
@@ -102,16 +101,26 @@ use crate::{
 // }
 impl crate::HaCKS {
     pub fn register<T: HaCK + 'static>(&mut self, module: T) {
-        self.hacs.insert(TypeId::of::<T>(), Rc::new(RefCell::new(module)));
+        let type_id = TypeId::of::<T>();
+        let name = module.name().to_string();
+        
+        self.hacs.insert(type_id, Rc::new(RefCell::new(module)));
         self.menu_dirty = true.into();
+        
+        // Register with state tracker
+        self.state_tracker.borrow_mut().register_module(type_id, name);
     }
     
     pub fn register_boxed(&mut self, module: Rc<RefCell<dyn HaCK>>) {
-        let type_id = {
+        let (type_id, name) = {
             let m_ref = module.borrow();
-            m_ref.nac_type_id()
+            (m_ref.nac_type_id(), m_ref.name().to_string())
         };
+        
         self.hacs.insert(type_id, module);
+        
+        // Register with state tracker
+        self.state_tracker.borrow_mut().register_module(type_id, name);
     }
 
     pub fn eject_module<T: HaCK + 'static>(&mut self) -> bool {
@@ -119,6 +128,10 @@ impl crate::HaCKS {
         if let Some(module_rc) = self.hacs.remove(&type_id) {
             module_rc.borrow_mut().on_unload();
             self.menu_dirty = true.into();
+            
+            // Unregister from state tracker
+            self.state_tracker.borrow_mut().unregister_module(&type_id);
+            
             true
         } else {
             false

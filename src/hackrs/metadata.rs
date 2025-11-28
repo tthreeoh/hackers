@@ -1,10 +1,8 @@
 use std::borrow::Cow;
 use std::time::Duration;
-use imgui::{Key, Ui};
+use imgui::Key;
 use serde::{Deserialize, Serialize};
 use crate::access::{AccessControl, AccessLevel};
-
-use crate::gui::hotkey_manager::HotkeyManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HotkeyBinding {

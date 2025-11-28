@@ -36,6 +36,7 @@ impl crate::HaCKS {
 
     pub fn tick(&self, target: TickTarget) {
         let sorted = self.topological_sort_update();
+        let tracking_enabled = self.state_tracker.borrow().enabled;
 
         for type_id in sorted {
             let should_update = {
@@ -51,9 +52,27 @@ impl crate::HaCKS {
 
             if should_update {
                 if let Some(module) = self.hacs.get(&type_id) {
+                    // Track update lifecycle
+                    if tracking_enabled {
+                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                            tracker.begin_update();
+                        }
+                    }
+                    
                     module.borrow_mut().update(self);
+                    
+                    if tracking_enabled {
+                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                            tracker.end_update();
+                        }
+                    }
                 }
             }
+        }
+
+        // Auto-flatten if needed
+        if tracking_enabled {
+            self.state_tracker.borrow_mut().flatten_if_needed();
         }
     }
 

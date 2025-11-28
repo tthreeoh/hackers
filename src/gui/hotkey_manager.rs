@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use imgui::{Ui, Key};
-use serde::{Deserialize, Serialize};
 use crate::metadata::HotkeyBinding;
 use std::any::TypeId;
 
-use crate::{HaCK, HaCKS, HaCMetadata};
+use crate::{HaCKS, HaCMetadata};
 
 impl HaCKS {
     /// Sync all module hotkeys to the manager (call on init/module load)
@@ -72,6 +71,7 @@ mod key_serde {
     use imgui::Key;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+    #[allow(unused)]
     pub fn serialize<S>(key: &Key, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -79,6 +79,7 @@ mod key_serde {
         (*key as i32).serialize(serializer)
     }
 
+    #[allow(unused)]
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Key, D::Error>
     where
         D: Deserializer<'de>,
@@ -146,6 +147,7 @@ mod serde_duration {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::time::Duration;
 
+    #[allow(unused)]
     pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -153,6 +155,7 @@ mod serde_duration {
         duration.as_millis().serialize(serializer)
     }
 
+    #[allow(unused)]
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where
         D: Deserializer<'de>,

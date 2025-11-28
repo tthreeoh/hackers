@@ -16,12 +16,13 @@ pub mod events;
 
 
 pub use update::*;
+#[allow(unused)]
 pub use registry::*;
 pub use iteration::*;
 pub use search::*;
 pub use events::*;
 
-use crate::{RuntimeSyncManager, SyncRegistry};
+use crate::{GlobalStateTracker, RuntimeSyncManager, SyncRegistry};
 use crate::access::AccessManager;
 use crate::gui::hotkey_manager::HotkeyManager;
 
@@ -50,7 +51,8 @@ pub struct HaCKS {
     
     pub access_manager: RefCell<AccessManager>,
     pub sync_registry: RefCell<Option<SyncRegistry>>,
-    pub runtime_sync_manager: RefCell<Option<RuntimeSyncManager>>, 
+    pub runtime_sync_manager: RefCell<Option<RuntimeSyncManager>>,
+    pub state_tracker: RefCell<GlobalStateTracker>,
 }
 
 #[allow(unused)]
@@ -73,7 +75,17 @@ impl HaCKS {
             access_manager: RefCell::new(AccessManager::new()),
             sync_registry: RefCell::new(None),
             runtime_sync_manager: RefCell::new(None),
+            state_tracker: RefCell::new(GlobalStateTracker::new()),
         }
+    }
+
+    pub fn toggle_state_tracker(&self) {
+        let mut tracker = self.state_tracker.borrow_mut();
+        tracker.show_window = !tracker.show_window;
+    }
+
+    pub fn show_state_tracker(&self) {
+        self.state_tracker.borrow_mut().show_window = true;
     }
 
     pub fn init_sync_registry(&self, registry: SyncRegistry) {
@@ -113,7 +125,7 @@ impl HaCKS {
     //     })
     // }
 
-    pub fn get_module<T: HaCK + 'static>(&self) -> Option<std::cell::Ref<T>> {
+    pub fn get_module<T: HaCK + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
         let type_id = std::any::TypeId::of::<T>();
         self.hacs.get(&type_id).map(|rc| {
             std::cell::Ref::map(rc.borrow(), |m| {
@@ -124,7 +136,7 @@ impl HaCKS {
         })
     }
 
-    pub fn get_module_mut<T: HaCK + 'static>(&self) -> Option<std::cell::RefMut<T>> {
+    pub fn get_module_mut<T: HaCK + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
         let type_id = std::any::TypeId::of::<T>();
         self.hacs.get(&type_id).map(|rc| {
             std::cell::RefMut::map(rc.borrow_mut(), |m| {
@@ -159,7 +171,7 @@ impl<'a> ModuleAccess<'a> {
         Self { hacs, self_id }
     }
 
-    pub fn get_mut<T: HaCK + 'static>(&self) -> Option<RefMut<T>> {
+    pub fn get_mut<T: HaCK + 'static>(&self) -> Option<RefMut<'_, T>> {
         let id = TypeId::of::<T>();
         if id == self.self_id {
             return None; // you can't borrow yourself
@@ -168,7 +180,7 @@ impl<'a> ModuleAccess<'a> {
         self.hacs.get_module_mut::<T>()
     }
 
-    pub fn get<T: HaCK + 'static>(&self) -> Option<Ref<T>> {
+    pub fn get<T: HaCK + 'static>(&self) -> Option<Ref<'_, T>> {
         let id = TypeId::of::<T>();
         if id == self.self_id {
             return None;

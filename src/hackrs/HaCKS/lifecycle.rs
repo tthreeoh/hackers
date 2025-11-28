@@ -15,9 +15,23 @@ impl HaCKS {
 
     pub fn init_all(&self) {
         let sorted = self.topological_sort_update();
+        let tracking_enabled = self.state_tracker.borrow().enabled;
+        
         for type_id in sorted {
             if let Some(module_rc) = self.hacs.get(&type_id) {
+                if tracking_enabled {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.begin_init();
+                    }
+                }
+                
                 module_rc.borrow_mut().init();
+                
+                if tracking_enabled {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.end_init();
+                    }
+                }
             }
         }
     }

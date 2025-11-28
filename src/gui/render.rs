@@ -40,61 +40,6 @@ impl HaCKS {
         }
     }
     
-    fn render_grouped_entries(&mut self, ui: &Ui, entries: &[(Vec<String>, TypeId)], depth: usize, current_path: &[String]) {
-        // Sort ALL entries by menu_weight first
-        let mut sorted_entries: Vec<_> = entries.to_vec();
-        sorted_entries.sort_by(|a, b| {
-            let weight_a = self.hacs.get(&a.1).map(|m| m.borrow().menu_weight()).unwrap_or(0.0);
-            let weight_b = self.hacs.get(&b.1).map(|m| m.borrow().menu_weight()).unwrap_or(0.0);
-            weight_b.partial_cmp(&weight_a).unwrap_or(std::cmp::Ordering::Equal)
-        });
-    
-        // Now render in sorted order
-        for (path, type_id) in sorted_entries {
-            if depth >= path.len() {
-                // This is a terminal entry - render it
-                if let Some(module_rc) = self.hacs.get(&type_id) {
-                    let mut module = module_rc.borrow_mut();
-                    if module.is_menu_enabled() && !module.is_window_enabled() {
-                        module.render_menu(ui);
-                        ui.separator();
-                        let button_label = format!("Window##undock_{:?}", type_id);
-                        if ui.small_button(&button_label) {
-                            module.set_show_window(true);
-                            module.set_show_menu(false);
-                        }
-                    }
-                }
-            } else {
-                // This is a submenu - check if we've already rendered this submenu
-                let submenu_name = path[depth].clone();
-                let mut submenu_path = current_path.to_vec();
-                submenu_path.push(submenu_name.clone());
-    
-                let is_windowed = self.windowed_groups.borrow_mut().get(&submenu_path).copied().unwrap_or(false);
-    
-                if !is_windowed {
-                    // Collect all entries for this submenu
-                    let submenu_entries: Vec<_> = entries.iter()
-                        .filter(|(p, _)| p.len() > depth && p[depth] == submenu_name)
-                        .cloned()
-                        .collect();
-    
-                    if !submenu_entries.is_empty() {
-                        ui.menu(&submenu_name, || {
-                            self.render_grouped_entries(ui, &submenu_entries, depth + 1, &submenu_path);
-                            ui.separator();
-                            // if ui.button("Undock Group##undock_sub") {
-                            //     self.windowed_groups.insert(submenu_path.clone(), true);
-                            // }
-                        });
-                    }
-                }
-            }
-        }
-    }
-    
-    
     fn render_grouped_entries_in_window(
         &mut self,
         ui: &Ui,
@@ -150,14 +95,14 @@ impl HaCKS {
         }
     }
     
-    
     pub fn render_menu(&mut self, ui: &Ui) {
         if self.menu_cache.borrow().is_none() || *self.menu_dirty.borrow() {
             *self.menu_cache.borrow_mut() = Some(self.rebuild_menu_cache());
             *self.menu_dirty.borrow_mut() = false;
         }
-    
+
         let cache = self.menu_cache.take().unwrap();
+        let tracking_enabled = self.state_tracker.borrow().enabled;
      
         for (top_name, entries) in cache.top_level.iter() {
             let top_path = vec![top_name.clone()];
@@ -165,7 +110,7 @@ impl HaCKS {
             
             if !is_windowed {
                 ui.menu(top_name, || {
-                    self.render_grouped_entries(ui, entries, 1, &top_path);
+                    self.render_grouped_entries_tracked(ui, entries, 1, &top_path, tracking_enabled);
                     ui.separator();
                     if ui.button("Undock Group##undock_grp") {
                         self.windowed_groups.borrow_mut().insert(top_path.clone(), true);
@@ -176,35 +121,100 @@ impl HaCKS {
         
         *self.menu_cache.borrow_mut() = Some(cache);
     }
-    pub fn render_window(&mut self, ui: &Ui) {
+
+    fn render_grouped_entries_tracked(
+        &mut self,
+        ui: &Ui,
+        entries: &[(Vec<String>, TypeId)],
+        depth: usize,
+        current_path: &[String],
+        tracking_enabled: bool,
+    ) {
+        // Similar to render_grouped_entries but with tracking
+        let mut sorted_entries: Vec<_> = entries.to_vec();
+        sorted_entries.sort_by(|a, b| {
+            let weight_a = self.hacs.get(&a.1).map(|m| m.borrow().menu_weight()).unwrap_or(0.0);
+            let weight_b = self.hacs.get(&b.1).map(|m| m.borrow().menu_weight()).unwrap_or(0.0);
+            weight_b.partial_cmp(&weight_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        for (path, type_id) in sorted_entries {
+            if depth >= path.len() {
+                if let Some(module_rc) = self.hacs.get(&type_id) {
+                    let mut module = module_rc.borrow_mut();
+                    if module.is_menu_enabled() && !module.is_window_enabled() {
+                        if tracking_enabled {
+                            if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                                tracker.begin_render_menu();
+                            }
+                        }
+                        
+                        module.render_menu(ui);
+                        
+                        if tracking_enabled {
+                            if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                                tracker.end_render_menu();
+                            }
+                        }
+                        
+                        ui.separator();
+                        let button_label = format!("Window##undock_{:?}", type_id);
+                        if ui.small_button(&button_label) {
+                            module.set_show_window(true);
+                            module.set_show_menu(false);
+                        }
+                    }
+                }
+            } else {
+                // Handle submenus...
+                let submenu_name = path[depth].clone();
+                let mut submenu_path = current_path.to_vec();
+                submenu_path.push(submenu_name.clone());
+
+                let is_windowed = self.windowed_groups.borrow_mut().get(&submenu_path).copied().unwrap_or(false);
+
+                if !is_windowed {
+                    let submenu_entries: Vec<_> = entries.iter()
+                        .filter(|(p, _)| p.len() > depth && p[depth] == submenu_name)
+                        .cloned()
+                        .collect();
+
+                    if !submenu_entries.is_empty() {
+                        ui.menu(&submenu_name, || {
+                            self.render_grouped_entries_tracked(ui, &submenu_entries, depth + 1, &submenu_path, tracking_enabled);
+                            ui.separator();
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+     pub fn render_window(&mut self, ui: &Ui) {
         let type_ids: Vec<_> = self.hacs.keys().copied().collect();
-        let sorted: Vec<TypeId> = self
-            .sort_by_weight(type_ids, |m| m.borrow().window_weight())
-            .clone();
+        let sorted: Vec<TypeId> = self.sort_by_weight(type_ids, |m| m.borrow().window_weight()).clone();
         let scale = ui.current_font_size() / 14.0;
-    
+        let tracking_enabled = self.state_tracker.borrow().enabled;
+
         for type_id in sorted {
             if let Some(module_rc) = self.hacs.get(&type_id) {
-                let mut module = module_rc.borrow_mut(); // <-- mutable borrow
+                let mut module = module_rc.borrow_mut();
                 let mut show = module.is_window_enabled();
                 let name = module.name().to_string();
-    
+
                 if show {
-                    let metadata = module.metadata(); // immutable borrow of metadata
-    
-                    // Load saved position or use default
+                    let metadata = module.metadata();
                     let saved_pos = if metadata.window_pos == [0.0, 0.0] {
                         [80.0 * scale, 0.0]
                     } else {
                         metadata.window_pos
                     };
-    
-                    // Build window with optional size
+
                     let mut window = ui.window(name)
                         .opened(&mut show)
                         .resizable(true)
                         .position(saved_pos, Condition::FirstUseEver);
-    
+
                     if metadata.auto_resize_window {
                         window = window.always_auto_resize(true);
                     } else {
@@ -214,11 +224,22 @@ impl HaCKS {
                         ];
                         window = window.size(scaled_size, Condition::FirstUseEver);
                     }
-    
+
                     if let Some(_token) = window.begin() {
+                        if tracking_enabled {
+                            if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                                tracker.begin_render_window();
+                            }
+                        }
+                        
                         module.render_window(ui);
-    
-                        // Save current window position and size
+                        
+                        if tracking_enabled {
+                            if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                                tracker.end_render_window();
+                            }
+                        }
+
                         let pos = ui.window_pos();
                         let size = ui.window_size();
                         let metadata_mut = module.metadata_mut();
@@ -226,7 +247,7 @@ impl HaCKS {
                         metadata_mut.window_size = size;
                     }
                 }
-    
+
                 if !show {
                     module.set_show_window(show);
                     module.set_show_menu(!show);
@@ -234,29 +255,30 @@ impl HaCKS {
             }
         }
     }
-    
+
     pub fn render_draw(
-        &mut self, 
-        ui: &imgui::Ui, 
+        &mut self,
+        ui: &imgui::Ui,
         draw_list_fg: &mut DrawListMut,
         draw_list_bg: &mut DrawListMut,
     ) {
         self.triggered_hotkeys.borrow_mut().clear();
         *self.triggered_hotkeys.borrow_mut() = self.hotkey_manager.borrow_mut().poll_all(ui);
-    
+
         let mut render_tree: HashMap<Vec<String>, Vec<TypeId>> = HashMap::new();
         let mut independent: Vec<TypeId> = Vec::new();
-    
+        let tracking_enabled = self.state_tracker.borrow().enabled;
+
         let type_ids: Vec<_> = self.hacs.keys().copied().collect();
-        let sorted = self.sort_by_weight(type_ids, |m_rc| m_rc.borrow().draw_weight()); // USE DRAW WEIGHT
-    
+        let sorted = self.sort_by_weight(type_ids, |m_rc| m_rc.borrow().draw_weight());
+
         for type_id in &sorted {
             if let Some(module_rc) = self.hacs.get(type_id) {
-                let module = module_rc.borrow(); // <-- immutable borrow to check render_enabled
+                let module = module_rc.borrow();
                 if !module.is_render_enabled() {
                     continue;
                 }
-    
+
                 let path = module.render_draw_path();
                 if path.is_empty() {
                     independent.push(*type_id);
@@ -266,24 +288,51 @@ impl HaCKS {
                 }
             }
         }
-    
-        // Render independent modules
+
         for type_id in independent {
             if let Some(module_rc) = self.hacs.get(&type_id) {
-                let mut module = module_rc.borrow_mut(); // <-- mutable borrow to call render_draw
+                let mut module = module_rc.borrow_mut();
+                
+                if tracking_enabled {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.begin_render_draw();
+                    }
+                }
+                
                 module.render_draw(ui, draw_list_fg, draw_list_bg);
-            }
-        }
-    
-        // Render tree modules
-        for (_path, type_ids) in render_tree {
-            for type_id in type_ids {
-                if let Some(module_rc) = self.hacs.get(&type_id) {
-                    let mut module = module_rc.borrow_mut(); // <-- mutable borrow
-                    module.render_draw(ui, draw_list_fg, draw_list_bg);
+                
+                if tracking_enabled {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.end_render_draw();
+                    }
                 }
             }
         }
+
+        for (_path, type_ids) in render_tree {
+            for type_id in type_ids {
+                if let Some(module_rc) = self.hacs.get(&type_id) {
+                    let mut module = module_rc.borrow_mut();
+                    
+                    if tracking_enabled {
+                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                            tracker.begin_render_draw();
+                        }
+                    }
+                    
+                    module.render_draw(ui, draw_list_fg, draw_list_bg);
+                    
+                    if tracking_enabled {
+                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                            tracker.end_render_draw();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Render state tracker window
+        self.state_tracker.borrow_mut().render_window(ui);
     }
 
     pub fn render_windowed_groups(&mut self, ui: &imgui::Ui) {

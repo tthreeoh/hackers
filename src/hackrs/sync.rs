@@ -1,7 +1,6 @@
 
 use std::any::TypeId;
 use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
 /// A type-safe sync action between two modules
@@ -113,6 +112,7 @@ where
 #[derive(Default)]
 pub struct SyncRegistry {
     actions: Vec<Box<dyn SyncAction>>,
+    #[allow(unused)]
     priority_map: HashMap<TypeId, i32>,
 }
 

@@ -374,7 +374,7 @@ impl RuntimeSyncManager {
             }
         }
     }
-    
+    #[allow(unused)]
     fn apply_sync(&self, sync: &mut RuntimeSync, hacs: &crate::HaCKS) -> Result<(), String> {
         Self::apply_sync_static(sync, hacs, &self.module_name_to_id)
     }
@@ -441,6 +441,7 @@ impl RuntimeSyncManager {
         Ok(())
     }
     
+    #[allow(unused)]
     fn update_module_from_json(
         &self,
         hacs: &crate::HaCKS,
