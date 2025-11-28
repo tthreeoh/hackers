@@ -1,3 +1,4 @@
+// Replace src/state_tracker/module_states.rs
 use std::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +20,6 @@ pub enum HaCKLifecycleState {
     Error,
     Qued,
     Stasis,
-
 }
 
 impl std::fmt::Display for HaCKLifecycleState {

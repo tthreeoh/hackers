@@ -2,7 +2,7 @@
 use std::any::TypeId;
 use std::collections::HashMap;
 
-use crate::TrackedModule;
+use crate::{HaCKLifecycleState, TrackedModule};
 
 /// Global state tracking configuration
 pub struct GlobalStateTracker {
@@ -93,5 +93,76 @@ impl GlobalStateTracker {
                 }
             }
         }
+    }
+}
+
+
+//state supression
+
+impl GlobalStateTracker {
+    /// Suppress a specific state across all modules
+    pub fn suppress_state_globally(&mut self, state: HaCKLifecycleState) {
+        for tracker in self.module_trackers.values_mut() {
+            tracker.lifecycle_tracker.suppress_state(state);
+        }
+    }
+    
+    /// Unsuppress a specific state across all modules
+    pub fn unsuppress_state_globally(&mut self, state: HaCKLifecycleState) {
+        for tracker in self.module_trackers.values_mut() {
+            tracker.lifecycle_tracker.unsuppress_state(&state);
+        }
+    }
+    
+    /// Toggle suppression of a state across all modules
+    pub fn toggle_suppress_state_globally(&mut self, state: HaCKLifecycleState) {
+        for tracker in self.module_trackers.values_mut() {
+            tracker.lifecycle_tracker.toggle_suppress_state(state);
+        }
+    }
+    
+    /// Enable/disable suppression globally
+    pub fn set_suppress_enabled_globally(&mut self, enabled: bool) {
+        for tracker in self.module_trackers.values_mut() {
+            tracker.lifecycle_tracker.suppress_enabled = enabled;
+        }
+    }
+    
+    /// Clear all suppressions across all modules
+    pub fn clear_suppressions_globally(&mut self) {
+        for tracker in self.module_trackers.values_mut() {
+            tracker.lifecycle_tracker.clear_suppressions();
+        }
+    }
+    
+    /// Preset: Suppress idle states (Stasis, Qued)
+    pub fn suppress_idle_states(&mut self) {
+        self.suppress_state_globally(HaCKLifecycleState::Stasis);
+        self.suppress_state_globally(HaCKLifecycleState::Qued);
+        self.set_suppress_enabled_globally(true);
+    }
+    
+    /// Preset: Suppress post-render states
+    pub fn suppress_post_states(&mut self) {
+        self.suppress_state_globally(HaCKLifecycleState::PostUpdate);
+        self.suppress_state_globally(HaCKLifecycleState::PostRenderMenu);
+        self.suppress_state_globally(HaCKLifecycleState::PostRenderWindow);
+        self.suppress_state_globally(HaCKLifecycleState::PostRenderDraw);
+        self.set_suppress_enabled_globally(true);
+    }
+    
+    /// Preset: Show only active work states (Updating, Rendering*)
+    pub fn suppress_all_except_active(&mut self) {
+        use HaCKLifecycleState::*;
+        let suppress_list = vec![
+            Uninitialized, Initializing, Ready, PostUpdate,
+            PostRenderMenu, PostRenderWindow, PostRenderDraw,
+            Unloading, Error, Qued, Stasis
+        ];
+        
+        for state in suppress_list {
+            self.suppress_state_globally(state);
+        }
+        self.set_suppress_enabled_globally(true);
     }
 }

@@ -3,8 +3,9 @@ use std::time::Duration;
 use imgui::{TableFlags, Ui};
 use crate::state_tracker::statetracker::*;
 
+// Update trait to require Eq + Hash consistently
 pub trait StateStatsRenderer {
-    fn render_state_stats<T: Clone + PartialEq, F: StateFormatter<T>>(
+    fn render_state_stats<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
         &self,
         ui: &Ui,
         stats: &[(T, Duration, u32, Option<Duration>)],
@@ -16,9 +17,8 @@ pub trait StateStatsRenderer {
 /// Renders state stats with progress bars embedded in state cells
 pub struct ProgressBarStateRenderer;
 
-
 impl StateStatsRenderer for ProgressBarStateRenderer {
-    fn render_state_stats<T: Clone + PartialEq, F: StateFormatter<T>>(
+    fn render_state_stats<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
         &self,
         ui: &Ui,
         stats: &[(T, Duration, u32, Option<Duration>)],
@@ -97,7 +97,7 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
                 ui.table_next_column();
                 let color1 = [0.0, 0.0, 0.0, 1.0]; // Black
                 let color2 = [1.0, 1.0, 1.0, 1.0]; // White
-                self.render_state_cell(ui, state, *time, total_time, formatter,color1, color2);
+                self.render_state_cell(ui, state, *time, total_time, formatter, color1, color2);
                 // Count
                 ui.table_next_column();
                 ui.text(format!("{}", count));
@@ -122,7 +122,7 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
 
 impl ProgressBarStateRenderer {
     /// Renders a state cell with progress bar and dual-colored text
-    fn render_state_cell<T: Clone + PartialEq, F: StateFormatter<T>>(
+    fn render_state_cell<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
         &self,
         ui: &Ui,
         state: &T,
@@ -174,7 +174,10 @@ pub trait RenderableStateTracker {
     fn render_stats<R: StateStatsRenderer>(&self, ui: &Ui, renderer: &R);
 }
 
-impl<T: Clone + PartialEq, F: StateFormatter<T>> RenderableStateTracker for StateTracker<T, F> {
+impl<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>> RenderableStateTracker for StateTracker<T, F> 
+where
+    F: Default,
+{
     fn render_stats<R: StateStatsRenderer>(&self, ui: &Ui, renderer: &R) {
         let stats = self.get_stats();
         let total_time = self.get_active_time();
@@ -186,7 +189,11 @@ pub trait StateTrackerUI {
     fn render_stats_tracker_ui(&mut self, ui: &Ui);
 }
 
-impl<T: Clone + PartialEq, F: StateFormatter<T>> StateTrackerUI for StateTracker<T, F> {
+
+impl<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>> StateTrackerUI for StateTracker<T, F> 
+where
+    F: Default,
+{
     fn render_stats_tracker_ui(&mut self, ui: &Ui) {
         let mut show = self.show;
         ui.window("State Tracker")
@@ -202,34 +209,165 @@ impl<T: Clone + PartialEq, F: StateFormatter<T>> StateTrackerUI for StateTracker
                     if ui.menu_item("Reset Stats") {
                         self.reset();
                     }
+                    if ui.menu_item("Clear Suppressions") {
+                        self.clear_suppressions();
+                    }
                     if ui.menu_item("Close") {
                         self.hide();
                     }
                 });
             }
+            
+            // Suppression toggle
+            ui.checkbox("Enable State Suppression", &mut self.suppress_enabled);
+            
             // Basic stats
-       
-            ui.text(format!("Session: {:.2}s (Active: {:.2}s)", 
-                self.get_total_session_duration().as_secs_f32(),
-                self.get_active_time().as_secs_f32())
-            );
+            let filtered_time = self.get_active_time();
+            let total_time = self.get_total_active_time();
+            
+            if self.suppress_enabled && !self.suppressed_states.is_empty() {
+                ui.text(format!(
+                    "Session: {:.2}s (Filtered: {:.2}s / Total: {:.2}s)", 
+                    self.get_total_session_duration().as_secs_f32(),
+                    filtered_time.as_secs_f32(),
+                    total_time.as_secs_f32()
+                ));
+            } else {
+                ui.text(format!(
+                    "Session: {:.2}s (Active: {:.2}s)", 
+                    self.get_total_session_duration().as_secs_f32(),
+                    total_time.as_secs_f32()
+                ));
+            }
+            
             ui.separator();
+            
             // Current state
             if let Some(ref state) = self.current_state {
                 if let Some(start) = self.current_state_start {
-                    ui.text(format!(
-                        "Current: {} ({:.2}s)",
+                    let is_suppressed = self.is_state_suppressed(state);
+                    let state_text = format!(
+                        "Current: {} ({:.2}s){}",
                         self.formatter.format_state(state),
-                        start.elapsed().as_secs_f32()
-                    ));
+                        start.elapsed().as_secs_f32(),
+                        if is_suppressed { " [SUPPRESSED]" } else { "" }
+                    );
+                    
+                    if is_suppressed {
+                        ui.text_colored([0.7, 0.7, 0.7, 1.0], &state_text);
+                    } else {
+                        ui.text(&state_text);
+                    }
                 }
                 ui.separator();
             }
-            let ProgressBarStateRenderer = ProgressBarStateRenderer;
-            self.render_stats( ui, &ProgressBarStateRenderer);
+            
+            let renderer = ProgressBarStateRenderer;
+            self.render_stats(ui, &renderer);
         });
-        if show == false {
+        
+        if !show {
             self.hide();
+        }
+    }
+}
+
+/// Enhanced renderer that shows suppressed states
+pub struct ProgressBarStateRendererWithSuppression;
+
+impl StateStatsRenderer for ProgressBarStateRendererWithSuppression {
+    fn render_state_stats<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
+        &self,
+        ui: &Ui,
+        stats: &[(T, Duration, u32, Option<Duration>)],
+        total_time: Duration,
+        formatter: &F
+    ) {
+        // This uses the filtered stats - same as original
+        ProgressBarStateRenderer.render_state_stats(ui, stats, total_time, formatter);
+    }
+}
+
+/// Render all stats with suppression indicators and interactive checkboxes
+/// Note: This is a standalone function since we can't mutate tracker through the callback
+pub fn render_all_stats_with_suppression<T, F>(
+    ui: &Ui,
+    all_stats: &[(T, Duration, u32, Option<Duration>, bool)],
+    total_time: Duration,
+    formatter: &F
+) 
+where 
+    T: Clone + PartialEq + Eq + std::hash::Hash,
+    F: StateFormatter<T>,
+{
+    if let Some(_table) = ui.begin_table_with_flags(
+        "state_stats_all_table", 
+        6, 
+        TableFlags::BORDERS | TableFlags::ROW_BG | TableFlags::RESIZABLE | TableFlags::SIZING_FIXED_FIT
+    ) {
+        ui.table_setup_column("Suppress");
+        ui.table_setup_column("State");
+        ui.table_setup_column("%");
+        ui.table_setup_column("Count");
+        ui.table_setup_column("Total");
+        ui.table_setup_column("Avg");
+        ui.table_headers_row();
+        
+        for (state, time, count, avg_time, is_suppressed) in all_stats {
+            if time.is_zero() { continue; }
+            
+            ui.table_next_row();
+            
+            // Checkbox to toggle suppression (read-only for now)
+            ui.table_next_column();
+            let mut suppressed = *is_suppressed;
+            let checkbox_id = format!("##suppress_{:?}", std::ptr::addr_of!(state));
+            ui.checkbox(&checkbox_id, &mut suppressed);
+            // Note: Checkbox changes can't be handled here directly
+            // This would need to return a list of state changes to apply
+            
+            // Apply dimmed color if suppressed
+            let color = if *is_suppressed {
+                [0.5, 0.5, 0.5, 1.0]
+            } else {
+                [1.0, 1.0, 1.0, 1.0]
+            };
+            
+            // State
+            ui.table_next_column();
+            ui.text_colored(color, &formatter.format_state(state));
+            
+            // Percentage bar
+            ui.table_next_column();
+            let percentage = if total_time.is_zero() { 
+                0.0 
+            } else { 
+                (time.as_secs_f64() / total_time.as_secs_f64()) * 100.0 
+            };
+            imgui::ProgressBar::new(percentage as f32 / 100.0)
+                .size([100.0, 0.0])
+                .overlay_text(&format!("{:.1}%", percentage))
+                .build(ui);
+            
+            // Count
+            ui.table_next_column();
+            ui.text_colored(color, &format!("{}", count));
+            
+            // Total time
+            ui.table_next_column();
+            ui.text_colored(color, &format!("{:.2}s", time.as_secs_f32()));
+            
+            // Average
+            ui.table_next_column();
+            if let Some(avg) = avg_time {
+                if avg.as_millis() < 1 {
+                    ui.text_colored(color, &format!("{:.2}μs", avg.as_micros()));
+                } else {
+                    ui.text_colored(color, &format!("{:.2}ms", avg.as_millis()));
+                }
+            } else {
+                ui.text_colored(color, "-");
+            }
         }
     }
 }

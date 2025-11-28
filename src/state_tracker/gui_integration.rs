@@ -42,7 +42,68 @@ pub mod gui_integration {
                         self.view_mode = StateViewMode::Performance;
                     }
                 });
-
+    
+                ui.menu("Filter", || {
+                    // Global suppression toggle
+                    let mut any_suppressed = self.module_trackers.values()
+                        .any(|t| t.lifecycle_tracker.suppress_enabled);
+                    
+                    if ui.checkbox("Enable Suppression", &mut any_suppressed) {
+                        self.set_suppress_enabled_globally(any_suppressed);
+                    }
+                    
+                    ui.separator();
+                    
+                    // Presets
+                    if ui.menu_item("Suppress Idle States (Stasis, Qued)") {
+                        self.suppress_idle_states();
+                    }
+                    
+                    if ui.menu_item("Suppress Post-* States") {
+                        self.suppress_post_states();
+                    }
+                    
+                    if ui.menu_item("Show Only Active Work") {
+                        self.suppress_all_except_active();
+                    }
+                    
+                    ui.separator();
+                    
+                    // Individual state toggles
+                    ui.text("Toggle Individual States:");
+                    ui.separator();
+                    
+                    use HaCKLifecycleState::*;
+                    let states = vec![
+                        Uninitialized, Initializing, Ready, Updating, PostUpdate,
+                        RenderingMenu, PostRenderMenu, RenderingWindow, PostRenderWindow,
+                        RenderingDraw, PostRenderDraw, Unloading, Error, Qued, Stasis
+                    ];
+                    
+                    for state in states {
+                        // Check if any module has this state suppressed
+                        let some_suppressed = self.module_trackers.values()
+                            .any(|t| t.lifecycle_tracker.is_state_suppressed(&state));
+                        
+                        let label = format!("{}", state);
+                        let mut is_suppressed = some_suppressed;
+                        
+                        if ui.checkbox(&label, &mut is_suppressed) {
+                            if is_suppressed {
+                                self.suppress_state_globally(state);
+                            } else {
+                                self.unsuppress_state_globally(state);
+                            }
+                        }
+                    }
+                    
+                    ui.separator();
+                    
+                    if ui.menu_item("Clear All Suppressions") {
+                        self.clear_suppressions_globally();
+                    }
+                });
+    
                 ui.menu("Actions", || {
                     if ui.menu_item("Reset All Stats") {
                         self.reset_all();
@@ -149,10 +210,27 @@ pub mod gui_integration {
                     
                     ui.separator();
                     
-                    ui.text(format!(
-                        "Active Session: {:.2}s",
-                        tracker.lifecycle_tracker.get_active_session_duration().as_secs_f32()
-                    ));
+                    // Show both filtered and total time when suppression is enabled
+                    if tracker.lifecycle_tracker.suppress_enabled {
+                        let filtered = tracker.lifecycle_tracker.get_active_time();
+                        let total = tracker.lifecycle_tracker.get_total_active_time();
+                        
+                        ui.text(format!("Active Time (Filtered): {:.2}s", filtered.as_secs_f32()));
+                        ui.text(format!("Active Time (Total): {:.2}s", total.as_secs_f32()));
+                        
+                        let suppressed_count = tracker.lifecycle_tracker.suppressed_states.len();
+                        if suppressed_count > 0 {
+                            ui.text_colored(
+                                [0.7, 0.7, 0.0, 1.0],
+                                &format!("({} states suppressed)", suppressed_count)
+                            );
+                        }
+                    } else {
+                        ui.text(format!(
+                            "Active Session: {:.2}s",
+                            tracker.lifecycle_tracker.get_active_session_duration().as_secs_f32()
+                        ));
+                    }
                     
                     ui.separator();
                     tracker.lifecycle_tracker.render_stats(ui, &renderer);
@@ -167,7 +245,7 @@ pub mod gui_integration {
                 ui.text("No module selected");
             }
         }
-
+        
         fn render_lifecycle_view(&self, ui: &Ui) {
             use std::collections::HashMap;
             use std::time::Duration;
