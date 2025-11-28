@@ -87,6 +87,24 @@ impl HaCKS {
     pub fn show_state_tracker(&self) {
         self.state_tracker.borrow_mut().show_window = true;
     }
+    
+    pub fn toggle_metadata_editor(&self) {
+        let mut metadata_window = *self.metadata_window.borrow_mut();
+        *self.metadata_window.borrow_mut() = !metadata_window;
+    }
+
+    pub fn show_metadata_editor(&self) {
+        *self.metadata_window.borrow_mut() = true;
+    }
+
+    pub fn toggle_metadata_window_viz(&self) {
+        let mut metadata_window_viz = *self.metadata_window_viz.borrow_mut();
+        *self.metadata_window_viz.borrow_mut() = !metadata_window_viz;
+    }
+
+    pub fn show_metadata_window_viz(&self) {
+        *self.metadata_window_viz.borrow_mut() = true;
+    }
 
     pub fn init_sync_registry(&self, registry: SyncRegistry) {
         *self.sync_registry.borrow_mut() = Some(registry);

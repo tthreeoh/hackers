@@ -1,7 +1,7 @@
 #[cfg(feature = "gui")]
 pub mod gui_integration {
     use imgui::Ui;
-    use crate::{GlobalStateTracker, ModuleLifecycleState, StateViewMode, state_tracker::ux_statetracker::{
+    use crate::{GlobalStateTracker, HaCKLifecycleState, StateViewMode, state_tracker::ux_statetracker::{
         ProgressBarStateRenderer, RenderableStateTracker
     }};
 
@@ -173,7 +173,7 @@ pub mod gui_integration {
             use std::time::Duration;
 
             // Aggregate lifecycle stats across all modules
-            let mut lifecycle_stats: HashMap<ModuleLifecycleState, (Duration, u64)> = HashMap::new();
+            let mut lifecycle_stats: HashMap<HaCKLifecycleState, (Duration, u64)> = HashMap::new();
 
             for tracker in self.module_trackers.values() {
                 for (state, stats) in tracker.lifecycle_tracker.get_state_statistics() {
