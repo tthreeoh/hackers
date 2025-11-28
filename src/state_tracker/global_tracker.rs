@@ -21,6 +21,7 @@ pub enum StateViewMode {
     SelectedModule,
     Lifecycle,
     Performance,
+    PhaseTiming,
 }
 
 impl Default for GlobalStateTracker {
