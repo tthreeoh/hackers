@@ -30,6 +30,14 @@ impl TrackedModule {
         }
     }
 
+    pub fn qued(&mut self) {
+        self.lifecycle_tracker.state_change(HaCKLifecycleState::Qued);
+    }
+
+    pub fn stasis(&mut self) {
+        self.lifecycle_tracker.state_change(HaCKLifecycleState::Stasis);
+    }
+
     pub fn begin_init(&mut self) {
         self.lifecycle_tracker.state_change(HaCKLifecycleState::Initializing);
     }

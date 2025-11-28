@@ -17,6 +17,9 @@ pub enum HaCKLifecycleState {
     PostRenderDraw,
     Unloading,
     Error,
+    Qued,
+    Stasis,
+
 }
 
 impl std::fmt::Display for HaCKLifecycleState {
@@ -35,6 +38,8 @@ impl std::fmt::Display for HaCKLifecycleState {
             Self::PostRenderDraw => write!(f, "Post Rendering Draw"),
             Self::Unloading => write!(f, "Unloading"),
             Self::Error => write!(f, "Error"),
+            Self::Qued => write!(f, "Qued"),
+            Self::Stasis => write!(f, "Stasis"),
         }
     }
 }

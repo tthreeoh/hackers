@@ -153,7 +153,7 @@ impl HaCKS {
                         
                         if tracking_enabled {
                             if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
-                                tracker.end_render_menu();
+                                tracker.stasis();
                             }
                         }
                         
@@ -236,7 +236,7 @@ impl HaCKS {
                         
                         if tracking_enabled {
                             if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
-                                tracker.end_render_window();
+                                tracker.stasis();
                             }
                         }
 
@@ -278,6 +278,11 @@ impl HaCKS {
                 if !module.is_render_enabled() {
                     continue;
                 }
+                if tracking_enabled {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.qued();
+                    }
+                }
 
                 let path = module.render_draw_path();
                 if path.is_empty() {
@@ -303,7 +308,7 @@ impl HaCKS {
                 
                 if tracking_enabled {
                     if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
-                        tracker.end_render_draw();
+                        tracker.stasis();
                     }
                 }
             }
@@ -324,7 +329,7 @@ impl HaCKS {
                     
                     if tracking_enabled {
                         if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
-                            tracker.end_render_draw();
+                            tracker.stasis();
                         }
                     }
                 }

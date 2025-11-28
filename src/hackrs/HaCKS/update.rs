@@ -13,9 +13,28 @@ impl crate::HaCKS {
     #[cfg(feature = "gui")]
     pub fn before_render(&self, ui: &Ui) {
         let sorted = self.topological_sort_update();
-        for type_id in sorted {
+        let tracking_enabled = self.state_tracker.borrow().enabled;
+        if tracking_enabled {
+            for type_id in &sorted {
+                if let Some(_module) = self.hacs.get(&type_id) {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.qued();
+                    }
+                }
+            }
+        }
+        for type_id in &sorted {
             if let Some(module) = self.hacs.get(&type_id) {
                 module.borrow_mut().before_render(ui);
+            }
+        }
+        if tracking_enabled {
+        for type_id in &sorted {
+            if let Some(_module) = self.hacs.get(&type_id) {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        tracker.stasis();
+                    }
+                }
             }
         }
     }
@@ -37,8 +56,29 @@ impl crate::HaCKS {
     pub fn tick(&self, target: TickTarget) {
         let sorted = self.topological_sort_update();
         let tracking_enabled = self.state_tracker.borrow().enabled;
+        for type_id in &sorted {
+            let should_update = {
+                let module = self.hacs.get(&type_id).unwrap();
+                let weight = module.borrow().update_weight();
+                match &target {
+                    TickTarget::All => true,
+                    TickTarget::Module(id) if module.borrow().nac_type_id() == *id => true,
+                    TickTarget::WeightRange(min, max) => (*min..=*max).contains(&weight),
+                    _ => false,
+                }
+            };
+            if should_update {
+                if tracking_enabled {
+                    if let Some(_module) = self.hacs.get(&type_id) {
+                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                            tracker.qued();
+                        }
+                    }
+                }
+            }
+        }
 
-        for type_id in sorted {
+        for type_id in &sorted {
             let should_update = {
                 let module = self.hacs.get(&type_id).unwrap();
                 let weight = module.borrow().update_weight();
@@ -69,6 +109,28 @@ impl crate::HaCKS {
                 }
             }
         }
+        
+        if tracking_enabled {
+            for type_id in &sorted {
+                let should_update = {
+                    let module = self.hacs.get(&type_id).unwrap();
+                    let weight = module.borrow().update_weight();
+                    match &target {
+                        TickTarget::All => true,
+                        TickTarget::Module(id) if module.borrow().nac_type_id() == *id => true,
+                        TickTarget::WeightRange(min, max) => (*min..=*max).contains(&weight),
+                        _ => false,
+                    }
+                };
+                if should_update {
+                    if let Some(_module) = self.hacs.get(&type_id) {
+                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                            tracker.stasis();
+                        }
+                    }
+                }
+            }
+        }
 
         // Auto-flatten if needed
         if tracking_enabled {
@@ -80,21 +142,21 @@ impl crate::HaCKS {
         self.tick(TickTarget::WeightRange(min, max));
     }
 
-    pub fn tick_by_name(&self, name: &str) {
-        if let Some((&type_id, _)) = self
-            .hacs
-            .iter()
-            .find(|(_, m)| m.borrow().name() == name)
-        {
-            if let Some(module) = self.hacs.get(&type_id) {
-                module.borrow_mut().update(self);
-            }
-        }
-    }
+    // pub fn tick_by_name(&self, name: &str) {
+    //     if let Some((&type_id, _)) = self
+    //         .hacs
+    //         .iter()
+    //         .find(|(_, m)| m.borrow().name() == name)
+    //     {
+    //         if let Some(module) = self.hacs.get(&type_id) {
+    //             module.borrow_mut().update(self);
+    //         }
+    //     }
+    // }
 
-    pub fn tick_all(&self) {
-        for module in self.hacs.values() {
-            module.borrow_mut().update(self);
-        }
-    }
+    // pub fn tick_all(&self) {
+    //     for module in self.hacs.values() {
+    //         module.borrow_mut().update(self);
+    //     }
+    // }
 }
