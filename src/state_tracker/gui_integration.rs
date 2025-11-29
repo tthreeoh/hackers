@@ -45,6 +45,9 @@ pub mod gui_integration {
                     if ui.menu_item("Performance View") {
                         self.view_mode = StateViewMode::Performance;
                     }
+                    if ui.menu_item("Phase Timing View") {
+                        self.view_mode = StateViewMode::PhaseTiming;
+                    }
                 });
     
                 ui.menu("Filter", || {
