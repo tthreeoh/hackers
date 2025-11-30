@@ -24,8 +24,10 @@ pub trait FieldInfo: std::any::Any {
 pub trait StructDisplayable: Send {
     fn draw_config_ui(&mut self, ui: &imgui::Ui);
     fn display(&mut self, ui: &imgui::Ui, value: &dyn FieldInfo);
+    fn clone_box(&self) -> Box<dyn StructDisplayable>;
 }
 
+#[derive(Clone)]
 pub struct StructViewerWrapper<T: FieldInfo> {
     pub viewer: StructViewer<T>,
 }
@@ -50,6 +52,12 @@ impl<T: FieldInfo + Send + 'static> StructDisplayable for StructViewerWrapper<T>
         } else {
             ui.text_colored([1.0, 0.0, 0.0, 1.0], "Mismatched type for viewer");
         }
+    }
+
+    fn clone_box(&self) -> Box<dyn StructDisplayable> {  // Add this
+        Box::new(StructViewerWrapper {
+            viewer: self.viewer.clone(),
+        })
     }
 }
 
@@ -400,11 +408,20 @@ impl HighlightRuleManager {
 // Main StructViewer
 // ============================================================================
 
-#[derive(Clone)]
 pub struct StructViewer<T: FieldInfo> {
     config: StructViewerConfig,
     rule_manager: HighlightRuleManager,
     _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: FieldInfo> Clone for StructViewer<T> {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            rule_manager: self.rule_manager.clone(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<T: FieldInfo> Default for StructViewer<T> {
