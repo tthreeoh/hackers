@@ -40,7 +40,7 @@ impl TrackedModule {
             error_count: 0,
             phase_timings: VecDeque::with_capacity(1000),
             max_phase_history: 1000,
-            last_phase_timestamp: Some((HaCKLifecycleState::Uninitialized, Instant::now())),
+            last_phase_timestamp: None,
         }
     }
 

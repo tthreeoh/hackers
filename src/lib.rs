@@ -1,6 +1,7 @@
 pub mod hackrs;
 pub mod macros;
 pub mod state_tracker;
+pub mod debug;
 
 #[cfg(feature = "gui")]
 pub mod gui;
@@ -10,7 +11,7 @@ pub use HaCKS::HaCKS;
 pub use HaCK;
 pub use state_tracker::*;
 pub use serde_json;
-
+pub use debug::*;
 
 
 
