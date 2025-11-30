@@ -10,7 +10,10 @@ readme = "README.md"
 keywords = ["modding"]
 categories = ["development"]
 
+
+
 [dependencies]
+hackers_derive = { path = "./hackers_derive" }
 hudhook = { git = "https://github.com/veeenu/hudhook.git", rev = "6a5c2ad34e9687f6426d7a38831d4411ca36023a" }
 imgui = { version = "0.12", features = ["tables-api"], optional = true }
 image = { version = "0.25.6", optional = true }
@@ -44,6 +47,7 @@ tracing = { version = "0.1.41", features = ["log"] }
 libloading = "0.8"
 anyhow = "1.0"
 ron = "0.11.0"
+strum = { version = "0.26", features = ["derive"] }
 
 [features]
 default = ["gui"]
