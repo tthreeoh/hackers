@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Data, Fields, Lit};
 
-#[proc_macro_derive(FieldInfo, attributes(fieldinfo))]
+#[proc_macro_derive(DeriveFieldInfo, attributes(fieldinfo))]
 pub fn field_info_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
