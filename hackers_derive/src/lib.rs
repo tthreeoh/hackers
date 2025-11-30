@@ -80,7 +80,7 @@ pub fn field_info_derive(input: TokenStream) -> TokenStream {
     });
 
     let expanded = quote! {
-        impl hackers::FieldInfoTrait for #name {  // <-- Use FieldInfoTrait
+        impl hackers::FieldInfo for #name {
             fn get_field_info(&self) -> Vec<hackers::FieldMeta> {
                 vec![
                     #(#field_infos),*
