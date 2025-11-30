@@ -15,7 +15,7 @@ pub use state_tracker::*;
 pub use serde_json;
 pub use debug::*;
 
-pub use hackers_derive::FieldInfo;
+pub use hackers_derive::DeriveFieldInfo;
 #[cfg(feature = "gui")]
 pub use structview::{FieldMeta, StructViewer};
 

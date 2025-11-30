@@ -1,4 +1,4 @@
-pub use hackers_derive::FieldInfo;
+pub use hackers_derive::DeriveFieldInfo;
 
 use imgui::{self, TreeNodeFlags, Ui};
 use strum::{EnumIter, IntoEnumIterator, Display};
