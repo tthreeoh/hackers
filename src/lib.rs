@@ -17,6 +17,6 @@ pub use debug::*;
 
 pub use hackers_derive::DeriveFieldInfo;
 #[cfg(feature = "gui")]
-pub use structview::{FieldMeta, StructViewer};
+pub use structview::{FieldInfo, FieldMeta, StructViewer};
 
 
