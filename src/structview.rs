@@ -13,7 +13,7 @@ pub struct FieldMeta {
     pub interpret: Option<String>,
 }
 
-pub trait FieldInfoTrait: std::any::Any {
+pub trait FieldInfo: std::any::Any {
     fn get_field_info(&self) -> Vec<FieldMeta>;
 }
 
@@ -23,14 +23,14 @@ pub trait FieldInfoTrait: std::any::Any {
 
 pub trait StructDisplayable: Send {
     fn draw_config_ui(&mut self, ui: &imgui::Ui);
-    fn display(&mut self, ui: &imgui::Ui, value: &dyn FieldInfoTrait);
+    fn display(&mut self, ui: &imgui::Ui, value: &dyn FieldInfo);
 }
 
-pub struct StructViewerWrapper<T: FieldInfoTrait> {
+pub struct StructViewerWrapper<T: FieldInfo> {
     pub viewer: StructViewer<T>,
 }
 
-impl<T: FieldInfoTrait + 'static> StructViewerWrapper<T> {
+impl<T: FieldInfo + 'static> StructViewerWrapper<T> {
     pub fn new() -> Self {
         Self {
             viewer: StructViewer::new(),
@@ -38,12 +38,12 @@ impl<T: FieldInfoTrait + 'static> StructViewerWrapper<T> {
     }
 }
 
-impl<T: FieldInfoTrait + Send + 'static> StructDisplayable for StructViewerWrapper<T> {
+impl<T: FieldInfo + Send + 'static> StructDisplayable for StructViewerWrapper<T> {
     fn draw_config_ui(&mut self, ui: &imgui::Ui) {
         self.viewer.draw_config_ui(ui);
     }
 
-    fn display(&mut self, ui: &imgui::Ui, value: &dyn FieldInfoTrait) {
+    fn display(&mut self, ui: &imgui::Ui, value: &dyn FieldInfo) {
         // Downcast from trait object to concrete type
         if let Some(concrete) = (value as &dyn std::any::Any).downcast_ref::<T>() {
             self.viewer.display(ui, concrete);
@@ -401,13 +401,13 @@ impl HighlightRuleManager {
 // ============================================================================
 
 #[derive(Clone)]
-pub struct StructViewer<T: FieldInfoTrait> {
+pub struct StructViewer<T: FieldInfo> {
     config: StructViewerConfig,
     rule_manager: HighlightRuleManager,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: FieldInfoTrait> Default for StructViewer<T> {
+impl<T: FieldInfo> Default for StructViewer<T> {
     fn default() -> Self {
         StructViewer {
             config: StructViewerConfig::default(),
@@ -417,7 +417,7 @@ impl<T: FieldInfoTrait> Default for StructViewer<T> {
     }
 }
 
-impl<T: FieldInfoTrait> StructViewer<T> {
+impl<T: FieldInfo> StructViewer<T> {
     pub fn new() -> Self {
         Self::default()
     }
