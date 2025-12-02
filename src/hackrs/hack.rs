@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use serde::Deserialize;
 use erased_serde::Serialize as ErasedSerialize;
 use imgui::{Ui,DrawListMut};
-use crate::{HaCKS, HaCMetadata, metadata::HotkeyBinding};
+use crate::{HaCKS, HaCMetadata, gui::UiBackend, metadata::HotkeyBinding};
 
 #[allow(unused)]
 pub trait HaCK: ErasedSerialize + Send + 'static {
@@ -10,13 +10,13 @@ pub trait HaCK: ErasedSerialize + Send + 'static {
     fn nac_type_id(&self) -> TypeId { TypeId::of::<Self>() }
     fn update(&mut self, hacs: &HaCKS) {}
     // fn update(&mut self, access: &mut ModuleAccess) {}
-    fn render_draw(&mut self,ui: &Ui,
+    fn render_menu(&mut self, ui: &dyn UiBackend) {}
+    fn render_window(&mut self, ui: &dyn UiBackend) {}
+    fn render_draw(&mut self,ui: &dyn UiBackend,
         // fonts: Option<Fonts>,
         draw_fg: &mut DrawListMut,
         draw_bg: &mut DrawListMut
     ) {}
-    fn render_menu(&mut self, ui: &Ui) {}
-    fn render_window(&mut self, ui: &Ui) {}
     fn is_menu_enabled(&self) -> bool;
     fn is_window_enabled(&self) -> bool;
     fn is_render_enabled(&self) -> bool;

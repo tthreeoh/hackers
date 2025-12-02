@@ -14,7 +14,7 @@ categories = ["development"]
 
 [dependencies]
 hackers_derive = { path = "./hackers_derive" }
-hudhook = { git = "https://github.com/veeenu/hudhook.git", rev = "6a5c2ad34e9687f6426d7a38831d4411ca36023a" }
+# hudhook = { git = "https://github.com/veeenu/hudhook.git", rev = "6a5c2ad34e9687f6426d7a38831d4411ca36023a" }
 imgui = { version = "0.12", features = ["tables-api"], optional = true }
 image = { version = "0.25.6", optional = true }
 serde = { version = "1", features = ["derive"] }
@@ -50,5 +50,9 @@ ron = "0.11.0"
 strum = { version = "0.26", features = ["derive"] }
 
 [features]
-default = ["gui"]
-gui = ["dep:imgui", "dep:image"]
+default = ["ui-imgui"]  # Keep imgui as default for backward compat
+ui-imgui = ["dep:imgui", "dep:image"]
+# ui-egui = ["dep:egui"]
+ui = []  # Base UI feature flag
+
+gui = ["dep:imgui", "dep:image"] #legacy

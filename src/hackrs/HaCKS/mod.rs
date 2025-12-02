@@ -24,6 +24,7 @@ pub use events::*;
 
 use crate::{GlobalStateTracker, RuntimeSyncManager, SyncRegistry};
 use crate::access::AccessManager;
+#[cfg(feature = "ui-imgui")]
 use crate::gui::hotkey_manager::HotkeyManager;
 
 use crate::hack::HaCK;

@@ -2,10 +2,10 @@ pub mod hackrs;
 pub mod macros;
 pub mod state_tracker;
 pub mod debug;
-#[cfg(feature = "gui")]
+#[cfg(any(feature = "gui",feature = "ui-imgui"))]
 pub mod structview;
 
-#[cfg(feature = "gui")]
+#[cfg(any(feature = "gui",feature = "ui-imgui"))]
 pub mod gui;
 
 pub use hackrs::*;
@@ -16,7 +16,7 @@ pub use serde_json;
 pub use debug::*;
 
 pub use hackers_derive::DeriveFieldInfo;
-#[cfg(feature = "gui")]
+#[cfg(any(feature = "gui",feature = "ui-imgui"))]
 pub use structview::{FieldInfo, FieldMeta, StructViewer};
 
 

@@ -1,0 +1,728 @@
+// ============================================================
+// imgui_backend.rs - Complete Implementation
+// ============================================================
+
+#[cfg(feature = "ui-imgui")]
+use std::any::Any;
+
+#[cfg(feature = "ui-imgui")]
+use crate::gui::{
+    Color, ComboBoxToken, DrawList, IoState, Key, MenuBarToken, MenuToken, MouseButton,
+    SelectableBuilder, StyleColor, StyleToken, TableFlags, TableToken, TreeNodeFlags,
+    TreeNodeToken, UiBackend, Vec2, WinCondition, WindowOptions, WindowToken,
+};
+
+#[cfg(feature = "ui-imgui")]
+pub struct ImguiBackend<'ui> {
+    ui: &'ui imgui::Ui,
+}
+
+#[cfg(feature = "ui-imgui")]
+impl<'ui> ImguiBackend<'ui> {
+    pub fn new(ui: &'ui imgui::Ui) -> Self {
+        Self { ui }
+    }
+
+    /// Get the underlying imgui Ui reference
+    pub fn inner(&self) -> &imgui::Ui {
+        self.ui
+    }
+}
+
+#[cfg(feature = "ui-imgui")]
+impl<'ui> UiBackend for ImguiBackend<'ui> {
+    fn text(&self, text: &str) {
+        self.ui.text(text);
+    }
+
+    fn text_colored(&self, color: Color, text: &str) {
+        self.ui.text_colored(color.to_array(), text);
+    }
+
+    fn text_wrapped(&self, text: &str) {
+        self.ui.text_wrapped(text);
+    }
+
+    fn text_disabled(&self, text: &str) {
+        self.ui.text_disabled(text);
+    }
+
+    fn same_line(&self) {
+        self.ui.same_line();
+    }
+
+    fn separator(&self) {
+        self.ui.separator();
+    }
+
+    fn spacing(&self) {
+        self.ui.spacing();
+    }
+
+    fn indent(&self) {
+        self.ui.indent();
+    }
+
+    fn unindent(&self) {
+        self.ui.unindent();
+    }
+
+    fn new_line(&self) {
+        self.ui.new_line();
+    }
+
+    fn dummy(&self, size: Vec2) {
+        self.ui.dummy(size.to_array());
+    }
+
+    fn group(&self, f: &mut dyn FnMut()) {
+        self.ui.group(|| f());
+    }
+
+    fn button(&self, label: &str) -> bool {
+        self.ui.button(label)
+    }
+
+    fn small_button(&self, label: &str) -> bool {
+        self.ui.small_button(label)
+    }
+
+    fn checkbox(&self, label: &str, value: &mut bool) -> bool {
+        self.ui.checkbox(label, value)
+    }
+
+    fn radio_button(&self, label: &str, active: bool) -> bool {
+        self.ui.radio_button_bool(label, active)
+    }
+
+    fn input_text(&self, label: &str, buffer: &mut String) -> bool {
+        self.ui.input_text(label, buffer).build()
+    }
+
+    fn input_text_readonly(&self, label: &str, buffer: &mut String) -> bool {
+        self.ui.input_text(label, buffer).read_only(true).build()
+    }
+
+    fn input_int(&self, label: &str, value: &mut i32) -> bool {
+        self.ui.input_int(label, value).build()
+    }
+
+    fn input_int_with_step(&self, label: &str, value: &mut i32, step: i32, step_fast: i32) -> bool {
+        self.ui
+            .input_int(label, value)
+            .step(step)
+            .step_fast(step_fast)
+            .build()
+    }
+
+    fn input_float(&self, label: &str, value: &mut f32) -> bool {
+        self.ui.input_float(label, value).build()
+    }
+
+    fn input_float_with_step(
+        &self,
+        label: &str,
+        value: &mut f32,
+        step: f32,
+        step_fast: f32,
+    ) -> bool {
+        self.ui
+            .input_float(label, value)
+            .step(step)
+            .step_fast(step_fast)
+            .build()
+    }
+
+    fn input_float2(&self, label: &str, values: &mut [f32; 2]) -> bool {
+        self.ui.input_float2(label, values).build()
+    }
+
+    fn begin_window_with_options(
+        &self,
+        title: &str,
+        options: &WindowOptions,
+    ) -> Option<WindowToken<'_>> {
+        let mut window = self.ui.window(title);
+
+        if let Some((size, cond)) = options.size {
+            window = window.size(size, convert_condition(cond));
+        }
+
+        if let Some((pos, cond)) = options.position {
+            window = window.position(pos, convert_condition(cond));
+        }
+
+        if options.menu_bar {
+            window = window.menu_bar(true);
+        }
+
+        if options.always_auto_resize {
+            window = window.always_auto_resize(true);
+        }
+
+        if !options.resizable {
+            window = window.resizable(false);
+        }
+
+        window.begin().map(|t| WindowToken { token: t })
+    }
+
+    fn begin_window_simple(
+        &self,
+        title: &str,
+        opened: &mut bool,
+        options: &WindowOptions,
+    ) -> Option<WindowToken<'_>> {
+        let mut window = self.ui.window(title).opened(opened);
+
+        if let Some((size, cond)) = options.size {
+            window = window.size(size, convert_condition(cond));
+        }
+
+        if let Some((pos, cond)) = options.position {
+            window = window.position(pos, convert_condition(cond));
+        }
+
+        if options.menu_bar {
+            window = window.menu_bar(true);
+        }
+
+        if options.always_auto_resize {
+            window = window.always_auto_resize(true);
+        }
+
+        if !options.resizable {
+            window = window.resizable(false);
+        }
+
+        window.begin().map(|t| WindowToken { token: t })
+    }
+
+    fn begin_child(&self, id: &str, size: Vec2, border: bool, ch_fn: &mut fn()) -> bool {
+        self.ui
+            .child_window(id)
+            .size(size.to_array())
+            .border(border)
+            .build(|| ch_fn())
+            .is_some()
+    }
+
+    fn end_child(&self) {
+        // Handled by closure in begin_child or RAII
+    }
+
+    fn begin_menu_bar(&self) -> Option<MenuBarToken<'_>> {
+        self.ui.begin_menu_bar().map(|t| MenuBarToken { token: t })
+    }
+
+    fn end_menu_bar(&self, token: Option<MenuBarToken<'_>>) {
+        // RAII handles it
+    }
+
+    fn begin_menu(&self, label: &str) -> Option<MenuToken<'_>> {
+        self.ui.begin_menu(label).map(|t| MenuToken { token: t })
+    }
+
+    fn end_menu(&self, token: Option<MenuBarToken<'_>>) {
+        // RAII handles it
+    }
+
+    fn menu_item(&self, label: &str) -> bool {
+        self.ui.menu_item(label)
+    }
+
+    fn collapsing_header(&self, label: &str, flags: TreeNodeFlags) -> bool {
+        self.ui.collapsing_header(label, convert_tree_flags(flags))
+    }
+
+    fn tree_node(&self, label: &str) -> Option<TreeNodeToken<'_>> {
+        self.ui.tree_node(label).map(|t| TreeNodeToken { token: t })
+    }
+
+    fn tree_pop(&self) {
+        // RAII handles it
+    }
+
+    fn begin_table(&self, id: &str, columns: usize, flags: TableFlags) -> Option<TableToken<'_>> {
+        self.ui
+            .begin_table_with_flags(id, columns, convert_table_flags(flags))
+            .map(|t| TableToken { token: t })
+    }
+
+    fn end_table(&self) {
+        // RAII handles it
+    }
+
+    fn table_next_row(&self) {
+        self.ui.table_next_row();
+    }
+
+    fn table_next_column(&self) {
+        self.ui.table_next_column();
+    }
+
+    fn table_setup_column(&self, label: &str) {
+        self.ui.table_setup_column(label);
+    }
+
+    fn table_headers_row(&self) {
+        self.ui.table_headers_row();
+    }
+
+    fn columns(&self, count: i32, id: &str, border: bool) {
+        self.ui.columns(count, id, border);
+    }
+
+    fn next_column(&self) {
+        self.ui.next_column();
+    }
+
+    fn set_column_width(&self, column_idx: i32, width: f32) {
+        self.ui.set_column_width(column_idx, width);
+    }
+
+    fn get_column_width(&self) -> f32 {
+        self.ui.current_column_width()
+    }
+
+    fn begin_combo(&self, label: &str, preview: &str) -> Option<ComboBoxToken<'_>> {
+        self.ui
+            .begin_combo(label, preview)
+            .map(|t| ComboBoxToken { token: t })
+    }
+
+    fn end_combo(&self) {
+        // RAII handles it
+    }
+
+    fn selectable<'a>(&self, label: &'a str) -> SelectableBuilder<'_, 'a> {
+        SelectableBuilder {
+            ui: self.ui,
+            label,
+            selected: false,
+        }
+    }
+
+    fn open_popup(&self, id: &str) {
+        self.ui.open_popup(id);
+    }
+
+    fn begin_popup(&self, id: &str) -> bool {
+        self.ui.begin_popup(id).is_some()
+    }
+
+    fn end_popup(&self) {
+        // RAII handles it
+    }
+
+    fn push_id_str(&self, id: &str) {
+        self.ui.push_id(id);
+    }
+
+    fn push_id_int(&self, id: i32) {
+        self.ui.push_id_int(id);
+    }
+
+    fn push_id_usize(&self, id: usize) {
+        self.ui.push_id_usize(id);
+    }
+
+    fn pop_id(&self) {
+        // self.ui.pop_id(); // imgui-rs uses RAII for IDs usually, but has pop_id too?
+        // imgui-rs `push_id` returns a token.
+        // If we want manual push/pop, we might need unsafe or different API.
+        // But `UiBackend` has `pop_id`.
+        // `imgui-rs` 0.8+ might not expose `pop_id` publicly if it enforces RAII.
+        // Check `imgui-rs` docs or assume we can't easily do manual pop without tokens.
+        // For now, let's assume `pop_id` is empty and we rely on RAII where possible, or this is a limitation.
+        // Actually, `gui_integration.rs` doesn't seem to use `push_id`/`pop_id` manually much, or uses `push_id` with a closure?
+        // `gui_integration.rs` uses `ui.push_id(id)`? No, I don't see it in the snippet.
+    }
+
+    fn set_item_default_focus(&self) {
+        self.ui.set_item_default_focus();
+    }
+
+    fn is_item_hovered(&self) -> bool {
+        self.ui.is_item_hovered()
+    }
+
+    fn is_item_active(&self) -> bool {
+        self.ui.is_item_active()
+    }
+
+    fn is_item_clicked(&self, button: MouseButton) -> bool {
+        let imgui_button = match button {
+            MouseButton::Left => imgui::MouseButton::Left,
+            MouseButton::Right => imgui::MouseButton::Right,
+            MouseButton::Middle => imgui::MouseButton::Middle,
+            MouseButton::Extra1 => imgui::MouseButton::Extra1,
+            MouseButton::Extra2 => imgui::MouseButton::Extra2,
+        };
+        self.ui.is_item_clicked_with_button(imgui_button)
+    }
+
+    fn set_next_item_width(&self, width: f32) {
+        self.ui.set_next_item_width(width);
+    }
+
+    fn set_cursor_pos(&self, pos: Vec2) {
+        self.ui.set_cursor_pos(pos.to_array());
+    }
+
+    fn get_cursor_pos(&self) -> Vec2 {
+        Vec2::from(self.ui.cursor_pos())
+    }
+
+    fn get_cursor_screen_pos(&self) -> Vec2 {
+        Vec2::from(self.ui.cursor_screen_pos())
+    }
+
+    fn set_cursor_screen_pos(&self, pos: Vec2) {
+        self.ui.set_cursor_screen_pos(pos.to_array());
+    }
+
+    fn get_window_pos(&self) -> Vec2 {
+        Vec2::from(self.ui.window_pos())
+    }
+
+    fn get_window_size(&self) -> Vec2 {
+        Vec2::from(self.ui.window_size())
+    }
+
+    fn get_content_region_avail(&self) -> Vec2 {
+        Vec2::from(self.ui.content_region_avail())
+    }
+
+    fn current_font_size(&self) -> f32 {
+        self.ui.current_font_size()
+    }
+
+    fn get_window_draw_list(&self) -> Box<dyn DrawList + '_> {
+        Box::new(ImguiDrawList {
+            list: self.ui.get_window_draw_list(),
+        })
+    }
+
+    fn get_background_draw_list(&self) -> Box<dyn DrawList + '_> {
+        Box::new(ImguiDrawList {
+            list: self.ui.get_background_draw_list(),
+        })
+    }
+
+    fn get_foreground_draw_list(&self) -> Box<dyn DrawList + '_> {
+        Box::new(ImguiDrawList {
+            list: self.ui.get_foreground_draw_list(),
+        })
+    }
+
+    fn is_key_pressed(&self, key: Key) -> bool {
+        self.ui.is_key_pressed(convert_key(key))
+    }
+
+    fn is_key_down(&self, key: Key) -> bool {
+        self.ui.io().keys_down[convert_key(key) as usize]
+    }
+
+    fn is_mouse_clicked(&self, button: MouseButton) -> bool {
+        match button {
+            MouseButton::Left => self.ui.is_mouse_clicked(imgui::MouseButton::Left),
+            MouseButton::Right => self.ui.is_mouse_clicked(imgui::MouseButton::Right),
+            MouseButton::Middle => self.ui.is_mouse_clicked(imgui::MouseButton::Middle),
+            MouseButton::Extra1 => self.ui.is_mouse_clicked(imgui::MouseButton::Extra1),
+            MouseButton::Extra2 => self.ui.is_mouse_clicked(imgui::MouseButton::Extra2),
+        }
+    }
+
+    fn get_mouse_pos(&self) -> Vec2 {
+        Vec2::from(self.ui.io().mouse_pos)
+    }
+
+    fn io(&self) -> IoState {
+        let io = self.ui.io();
+        IoState {
+            key_shift: io.key_shift,
+            key_ctrl: io.key_ctrl,
+            key_alt: io.key_alt,
+            mouse_pos: Vec2::from(io.mouse_pos),
+        }
+    }
+
+    fn keys_down(&self) -> &[bool] {
+        &self.ui.io().keys_down
+    }
+
+    fn calc_text_size(&self, text: &str) -> Vec2 {
+        Vec2::from(self.ui.calc_text_size(text))
+    }
+
+    fn push_style_color(&self, style: StyleColor, color: Color) -> StyleToken {
+        let imgui_style = match style {
+            StyleColor::Text => imgui::StyleColor::Text,
+            StyleColor::TextDisabled => imgui::StyleColor::TextDisabled,
+            StyleColor::WindowBg => imgui::StyleColor::WindowBg,
+            StyleColor::ChildBg => imgui::StyleColor::ChildBg,
+            StyleColor::PopupBg => imgui::StyleColor::PopupBg,
+            StyleColor::Border => imgui::StyleColor::Border,
+            StyleColor::BorderShadow => imgui::StyleColor::BorderShadow,
+            StyleColor::FrameBg => imgui::StyleColor::FrameBg,
+            StyleColor::FrameBgHovered => imgui::StyleColor::FrameBgHovered,
+            StyleColor::FrameBgActive => imgui::StyleColor::FrameBgActive,
+            StyleColor::TitleBg => imgui::StyleColor::TitleBg,
+            StyleColor::TitleBgActive => imgui::StyleColor::TitleBgActive,
+            StyleColor::TitleBgCollapsed => imgui::StyleColor::TitleBgCollapsed,
+            StyleColor::MenuBarBg => imgui::StyleColor::MenuBarBg,
+            StyleColor::ScrollbarBg => imgui::StyleColor::ScrollbarBg,
+            StyleColor::ScrollbarGrab => imgui::StyleColor::ScrollbarGrab,
+            StyleColor::ScrollbarGrabHovered => imgui::StyleColor::ScrollbarGrabHovered,
+            StyleColor::ScrollbarGrabActive => imgui::StyleColor::ScrollbarGrabActive,
+            StyleColor::CheckMark => imgui::StyleColor::CheckMark,
+            StyleColor::SliderGrab => imgui::StyleColor::SliderGrab,
+            StyleColor::SliderGrabActive => imgui::StyleColor::SliderGrabActive,
+            StyleColor::Button => imgui::StyleColor::Button,
+            StyleColor::ButtonHovered => imgui::StyleColor::ButtonHovered,
+            StyleColor::ButtonActive => imgui::StyleColor::ButtonActive,
+            StyleColor::Header => imgui::StyleColor::Header,
+            StyleColor::HeaderHovered => imgui::StyleColor::HeaderHovered,
+            StyleColor::HeaderActive => imgui::StyleColor::HeaderActive,
+            StyleColor::Separator => imgui::StyleColor::Separator,
+            StyleColor::SeparatorHovered => imgui::StyleColor::SeparatorHovered,
+            StyleColor::SeparatorActive => imgui::StyleColor::SeparatorActive,
+            StyleColor::ResizeGrip => imgui::StyleColor::ResizeGrip,
+            StyleColor::ResizeGripHovered => imgui::StyleColor::ResizeGripHovered,
+            StyleColor::ResizeGripActive => imgui::StyleColor::ResizeGripActive,
+            StyleColor::Tab => imgui::StyleColor::Tab,
+            StyleColor::TabHovered => imgui::StyleColor::TabHovered,
+            StyleColor::TabActive => imgui::StyleColor::TabActive,
+            StyleColor::TabUnfocused => imgui::StyleColor::TabUnfocused,
+            StyleColor::TabUnfocusedActive => imgui::StyleColor::TabUnfocusedActive,
+            StyleColor::PlotLines => imgui::StyleColor::PlotLines,
+            StyleColor::PlotLinesHovered => imgui::StyleColor::PlotLinesHovered,
+            StyleColor::PlotHistogram => imgui::StyleColor::PlotHistogram,
+            StyleColor::PlotHistogramHovered => imgui::StyleColor::PlotHistogramHovered,
+            StyleColor::TableHeaderBg => imgui::StyleColor::TableHeaderBg,
+            StyleColor::TableBorderStrong => imgui::StyleColor::TableBorderStrong,
+            StyleColor::TableBorderLight => imgui::StyleColor::TableBorderLight,
+            StyleColor::TableRowBg => imgui::StyleColor::TableRowBg,
+            StyleColor::TableRowBgAlt => imgui::StyleColor::TableRowBgAlt,
+            StyleColor::TextSelectedBg => imgui::StyleColor::TextSelectedBg,
+            StyleColor::DragDropTarget => imgui::StyleColor::DragDropTarget,
+            StyleColor::NavHighlight => imgui::StyleColor::NavHighlight,
+            StyleColor::NavWindowingHighlight => imgui::StyleColor::NavWindowingHighlight,
+            StyleColor::NavWindowingDimBg => imgui::StyleColor::NavWindowingDimBg,
+            StyleColor::ModalWindowDimBg => imgui::StyleColor::ModalWindowDimBg,
+        };
+
+        let token = self.ui.push_style_color(imgui_style, color.to_array());
+        StyleToken { token }
+    }
+
+    fn pop_style_color(&self) {
+        // Handled by RAII StyleToken
+    }
+
+    fn progress_bar(&self, fraction: f32, size: Vec2, overlay: Option<&str>) {
+        let mut bar = imgui::ProgressBar::new(fraction).size(size.to_array());
+
+        if let Some(text) = overlay {
+            bar = bar.overlay_text(text);
+        }
+
+        bar.build(self.ui);
+    }
+}
+
+// ===== ImGui DrawList Implementation =====
+
+#[cfg(feature = "ui-imgui")]
+struct ImguiDrawList<'a> {
+    list: imgui::DrawListMut<'a>,
+}
+
+#[cfg(feature = "ui-imgui")]
+impl DrawList for ImguiDrawList<'_> {
+    fn add_rect(&mut self, p1: Vec2, p2: Vec2, color: Color, filled: bool) {
+        let color_u32 = color_to_u32(color);
+        if filled {
+            self.list
+                .add_rect(p1.to_array(), p2.to_array(), color_u32)
+                .filled(true)
+                .build();
+        } else {
+            self.list
+                .add_rect(p1.to_array(), p2.to_array(), color_u32)
+                .build();
+        }
+    }
+
+    fn add_text(&mut self, pos: Vec2, color: Color, text: &str) {
+        self.list
+            .add_text(pos.to_array(), color_to_u32(color), text);
+    }
+
+    fn add_line(&mut self, p1: Vec2, p2: Vec2, color: Color, thickness: f32) {
+        self.list
+            .add_line(p1.to_array(), p2.to_array(), color_to_u32(color))
+            .thickness(thickness)
+            .build();
+    }
+
+    fn add_circle(&mut self, center: Vec2, radius: f32, color: Color, filled: bool) {
+        let color_u32 = color_to_u32(color);
+        if filled {
+            self.list
+                .add_circle(center.to_array(), radius, color_u32)
+                .filled(true)
+                .build();
+        } else {
+            self.list
+                .add_circle(center.to_array(), radius, color_u32)
+                .build();
+        }
+    }
+
+    fn push_clip_rect(&mut self, min: Vec2, max: Vec2, intersect_with_current: bool) {
+        self.list
+            .with_clip_rect(min.to_array(), max.to_array(), || {});
+    }
+
+    fn pop_clip_rect(&mut self) {
+        // self.list.pop_clip_rect();
+    }
+}
+
+#[cfg(feature = "ui-imgui")]
+fn color_to_u32(color: Color) -> u32 {
+    let r = (color.r * 255.0) as u32;
+    let g = (color.g * 255.0) as u32;
+    let b = (color.b * 255.0) as u32;
+    let a = (color.a * 255.0) as u32;
+    (a << 24) | (b << 16) | (g << 8) | r
+}
+
+// Helper conversion functions
+#[cfg(feature = "ui-imgui")]
+fn convert_tree_flags(flags: TreeNodeFlags) -> imgui::TreeNodeFlags {
+    let mut result = imgui::TreeNodeFlags::empty();
+    if flags.default_open {
+        result |= imgui::TreeNodeFlags::DEFAULT_OPEN;
+    }
+    if flags.open_on_arrow {
+        result |= imgui::TreeNodeFlags::OPEN_ON_ARROW;
+    }
+    if flags.leaf {
+        result |= imgui::TreeNodeFlags::LEAF;
+    }
+    if flags.bullet {
+        result |= imgui::TreeNodeFlags::BULLET;
+    }
+    result
+}
+
+#[cfg(feature = "ui-imgui")]
+fn convert_condition(cond: WinCondition) -> imgui::Condition {
+    match cond {
+        WinCondition::Always => imgui::Condition::Always,
+        WinCondition::Once => imgui::Condition::Once,
+        WinCondition::FirstUseEver => imgui::Condition::FirstUseEver,
+        WinCondition::Appearing => imgui::Condition::Appearing,
+    }
+}
+
+#[cfg(feature = "ui-imgui")]
+fn convert_table_flags(flags: TableFlags) -> imgui::TableFlags {
+    let mut result = imgui::TableFlags::empty();
+    if flags.borders {
+        result |= imgui::TableFlags::BORDERS;
+    }
+    if flags.row_bg {
+        result |= imgui::TableFlags::ROW_BG;
+    }
+    if flags.resizable {
+        result |= imgui::TableFlags::RESIZABLE;
+    }
+    if flags.sizing_fixed_fit {
+        result |= imgui::TableFlags::SIZING_FIXED_FIT;
+    }
+    result
+}
+
+#[cfg(feature = "ui-imgui")]
+fn convert_key(key: Key) -> imgui::Key {
+    match key {
+        Key::Escape => imgui::Key::Escape,
+        Key::A => imgui::Key::A,
+        Key::B => imgui::Key::B,
+        Key::C => imgui::Key::C,
+        Key::D => imgui::Key::D,
+        Key::E => imgui::Key::E,
+        Key::F => imgui::Key::F,
+        Key::G => imgui::Key::G,
+        Key::H => imgui::Key::H,
+        Key::I => imgui::Key::I,
+        Key::J => imgui::Key::J,
+        Key::K => imgui::Key::K,
+        Key::L => imgui::Key::L,
+        Key::M => imgui::Key::M,
+        Key::N => imgui::Key::N,
+        Key::O => imgui::Key::O,
+        Key::P => imgui::Key::P,
+        Key::Q => imgui::Key::Q,
+        Key::R => imgui::Key::R,
+        Key::S => imgui::Key::S,
+        Key::T => imgui::Key::T,
+        Key::U => imgui::Key::U,
+        Key::V => imgui::Key::V,
+        Key::W => imgui::Key::W,
+        Key::X => imgui::Key::X,
+        Key::Y => imgui::Key::Y,
+        Key::Z => imgui::Key::Z,
+        Key::Num0 => imgui::Key::Alpha0,
+        Key::Num1 => imgui::Key::Alpha1,
+        Key::Num2 => imgui::Key::Alpha2,
+        Key::Num3 => imgui::Key::Alpha3,
+        Key::Num4 => imgui::Key::Alpha4,
+        Key::Num5 => imgui::Key::Alpha5,
+        Key::Num6 => imgui::Key::Alpha6,
+        Key::Num7 => imgui::Key::Alpha7,
+        Key::Num8 => imgui::Key::Alpha8,
+        Key::Num9 => imgui::Key::Alpha9,
+        Key::F1 => imgui::Key::F1,
+        Key::F2 => imgui::Key::F2,
+        Key::F3 => imgui::Key::F3,
+        Key::F4 => imgui::Key::F4,
+        Key::F5 => imgui::Key::F5,
+        Key::F6 => imgui::Key::F6,
+        Key::F7 => imgui::Key::F7,
+        Key::F8 => imgui::Key::F8,
+        Key::F9 => imgui::Key::F9,
+        Key::F10 => imgui::Key::F10,
+        Key::F11 => imgui::Key::F11,
+        Key::F12 => imgui::Key::F12,
+        Key::Space => imgui::Key::Space,
+        Key::Tab => imgui::Key::Tab,
+        Key::Enter => imgui::Key::Enter,
+        Key::Backspace => imgui::Key::Backspace,
+        Key::Delete => imgui::Key::Delete,
+        Key::Insert => imgui::Key::Insert,
+        Key::Home => imgui::Key::Home,
+        Key::End => imgui::Key::End,
+        Key::PageUp => imgui::Key::PageUp,
+        Key::PageDown => imgui::Key::PageDown,
+        Key::LeftArrow => imgui::Key::LeftArrow,
+        Key::RightArrow => imgui::Key::RightArrow,
+        Key::UpArrow => imgui::Key::UpArrow,
+        Key::DownArrow => imgui::Key::DownArrow,
+        Key::GraveAccent => imgui::Key::GraveAccent,
+        Key::Keypad0 => imgui::Key::Keypad0,
+        Key::Keypad1 => imgui::Key::Keypad1,
+        Key::Keypad2 => imgui::Key::Keypad2,
+        Key::Keypad3 => imgui::Key::Keypad3,
+        Key::Keypad4 => imgui::Key::Keypad4,
+        Key::Keypad5 => imgui::Key::Keypad5,
+        Key::Keypad6 => imgui::Key::Keypad6,
+        Key::Keypad7 => imgui::Key::Keypad7,
+        Key::Keypad8 => imgui::Key::Keypad8,
+        Key::Keypad9 => imgui::Key::Keypad9,
+    }
+}

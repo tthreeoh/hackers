@@ -1,16 +1,17 @@
-
+use crate::{
+    gui::{Color, TableFlags, UiBackend, Vec2, WinCondition, WindowOptions},
+    state_tracker::statetracker::*,
+};
 use std::time::Duration;
-use imgui::{TableFlags, Ui};
-use crate::state_tracker::statetracker::*;
 
 // Update trait to require Eq + Hash consistently
 pub trait StateStatsRenderer {
     fn render_state_stats<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
         &self,
-        ui: &Ui,
+        ui: &dyn UiBackend,
         stats: &[(T, Duration, u32, Option<Duration>)],
         total_time: Duration,
-        formatter: &F
+        formatter: &F,
     );
 }
 
@@ -20,16 +21,18 @@ pub struct ProgressBarStateRenderer;
 impl StateStatsRenderer for ProgressBarStateRenderer {
     fn render_state_stats<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
         &self,
-        ui: &Ui,
+        ui: &dyn UiBackend,
         stats: &[(T, Duration, u32, Option<Duration>)],
         total_time: Duration,
-        formatter: &F
+        formatter: &F,
     ) {
-        if let Some(_table) = ui.begin_table_with_flags(
-            "state_stats_table", 
-            5, 
-            TableFlags::BORDERS | TableFlags::ROW_BG | TableFlags::RESIZABLE | TableFlags::SIZING_FIXED_FIT
-        ) {
+        let flags = TableFlags {
+            borders: true,
+            row_bg: true,
+            resizable: true,
+            sizing_fixed_fit: true,
+        };
+        if let Some(_table) = ui.begin_table("state_stats_table", 5, flags) {
             let mut max_state_width = 0.0;
             let mut max_time_width = 0.0;
             let mut max_count_width = 0.0;
@@ -38,7 +41,7 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
                 // Calculate the width of the state text
                 let state_str = formatter.format_state(state);
                 let text_size = ui.calc_text_size(&state_str);
-                let text_width = text_size[0] + 5.0; // Add padding
+                let text_width = text_size.x + 5.0; // Add padding
                 if text_width > max_state_width {
                     max_state_width = text_width;
                 }
@@ -49,14 +52,14 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
                     format!("{:.2}ms", time.as_millis())
                 };
                 let time_text_size = ui.calc_text_size(&time_str);
-                let time_text_width = time_text_size[0] + 5.0; // Add padding
+                let time_text_width = time_text_size.x + 5.0; // Add padding
                 if time_text_width > max_time_width {
                     max_time_width = time_text_width;
                 }
                 // Calculate the width of the count text
                 let count_str = format!("{}", count);
-                let count_text_size = ui.calc_text_size(&count_str);    
-                let count_text_width = count_text_size[0] + 5.0; // Add padding
+                let count_text_size = ui.calc_text_size(&count_str);
+                let count_text_width = count_text_size.x + 5.0; // Add padding
                 if count_text_width > max_count_width {
                     max_count_width = count_text_width;
                 }
@@ -71,7 +74,7 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
                     "-".to_string()
                 };
                 let avg_text_size = ui.calc_text_size(&avg_str);
-                let avg_text_width = avg_text_size[0] + 5.0; // Add padding 
+                let avg_text_width = avg_text_size.x + 5.0; // Add padding
                 if avg_text_width > max_avg_width {
                     max_avg_width = avg_text_width;
                 }
@@ -88,11 +91,13 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
             ui.table_setup_column("Avg");
             ui.table_headers_row();
             for (state, time, count, avg_time) in stats {
-                if time.is_zero() { continue; }
+                if time.is_zero() {
+                    continue;
+                }
                 ui.table_next_row();
                 // State column with embedded progress bar
                 ui.table_next_column();
-                ui.text(formatter.format_state(state));
+                ui.text(&formatter.format_state(state));
                 //percentage
                 ui.table_next_column();
                 let color1 = [0.0, 0.0, 0.0, 1.0]; // Black
@@ -100,17 +105,17 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
                 self.render_state_cell(ui, state, *time, total_time, formatter, color1, color2);
                 // Count
                 ui.table_next_column();
-                ui.text(format!("{}", count));
+                ui.text(&format!("{}", count));
                 // Total time
                 ui.table_next_column();
-                ui.text(format!("{:.2}s", time.as_secs_f32()));
+                ui.text(&format!("{:.2}s", time.as_secs_f32()));
                 // Average
                 ui.table_next_column();
                 if let Some(avg) = avg_time {
                     if avg.as_millis() < 1 {
-                        ui.text(format!("{:.2}μs", avg.as_micros()));
+                        ui.text(&format!("{:.2}μs", avg.as_micros()));
                     } else {
-                        ui.text(format!("{:.2}ms", avg.as_millis()));
+                        ui.text(&format!("{:.2}ms", avg.as_millis()));
                     }
                 } else {
                     ui.text("-");
@@ -121,64 +126,64 @@ impl StateStatsRenderer for ProgressBarStateRenderer {
 }
 
 impl ProgressBarStateRenderer {
-    /// Renders a state cell with progress bar and dual-colored text
-    fn render_state_cell<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
+    fn render_state_cell<T, F>(
         &self,
-        ui: &Ui,
+        ui: &dyn UiBackend,
         state: &T,
         time: Duration,
         total_time: Duration,
         formatter: &F,
         _color1: [f32; 4],
         color2: [f32; 4],
-    ) {
-        let start_pos = ui.cursor_pos();
-        let cell_width = ui.current_column_width();
-        // Get state text
+    ) where
+        T: Clone + PartialEq + Eq + std::hash::Hash,
+        F: StateFormatter<T>,
+    {
+        let start_pos = ui.get_cursor_pos();
+        let cell_width = ui.get_column_width();
         let state_str = formatter.format_state(state);
         let text_size = ui.calc_text_size(&state_str);
-        let text_height = text_size[1];
+        let text_height = text_size.y;
         let bar_height = text_height + 2.0;
-        // Calculate percentage
-        let percentage = if total_time.is_zero() { 
-            0.0 
-        } else { 
-            (time.as_secs_f64() / total_time.as_secs_f64()) * 100.0 
+
+        let percentage = if total_time.is_zero() {
+            0.0
+        } else {
+            (time.as_secs_f64() / total_time.as_secs_f64()) * 100.0
         };
-        // Draw progress bar (no text)
-        imgui::ProgressBar::new(percentage as f32 / 100.0)
-            .size([cell_width - 10.0, bar_height])
-            .build(ui);
-        // Text positioning (centered vertically in bar)
-        let text_y = start_pos[1] + (bar_height - text_height) * 0.5;
-        let text_x = start_pos[0] + 5.0;
-        // Background text (dimmed color)
-        ui.set_cursor_pos([text_x, text_y]);
-        // ui.text_colored(color1, &state_str);
-        // Foreground text (bright color, clipped to progress width)
+
+        // Draw progress bar (you'll need to add a progress_bar method to UiBackend)
+        // For now, placeholder
+
+        let text_y = start_pos.y + (bar_height - text_height) * 0.5;
+        let text_x = start_pos.x + 5.0;
         let clip_width = (cell_width - 10.0) * (percentage as f32 / 100.0);
-        let draw_list = ui.get_window_draw_list();
-        draw_list.with_clip_rect(
-            [text_x, start_pos[1]], 
-            [text_x + clip_width, start_pos[1] + bar_height],
-            || {
-                ui.set_cursor_pos([text_x, text_y]);
-                ui.text_colored(color2, &state_str);
-            }
+
+        // ✅ Use push/pop instead of with_clip_rect
+        let mut draw_list = ui.get_window_draw_list();
+        draw_list.push_clip_rect(
+            Vec2::new(text_x, start_pos.y),
+            Vec2::new(text_x + clip_width, start_pos.y + bar_height),
+            true, // intersect with current clip rect
         );
+
+        ui.set_cursor_pos(Vec2::new(text_x, text_y));
+        ui.text_colored(Color::from(color2), &state_str);
+
+        // draw_list.pop_clip_rect();
     }
 }
-
 /// Extension trait for rendering state tracker stats in UI
 pub trait RenderableStateTracker {
-    fn render_stats<R: StateStatsRenderer>(&self, ui: &Ui, renderer: &R);
+    fn render_stats<R: StateStatsRenderer>(&self, ui: &dyn UiBackend, renderer: &R);
 }
 
-impl<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>> RenderableStateTracker for StateTracker<T, F> 
+impl<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>> RenderableStateTracker
+    for StateTracker<T, F>
 where
     F: Default,
 {
-    fn render_stats<R: StateStatsRenderer>(&self, ui: &Ui, renderer: &R) {
+    fn render_stats<R: StateStatsRenderer>(&self, ui: &dyn UiBackend, renderer: &R) {
         let stats = self.get_stats();
         let total_time = self.get_active_time();
         renderer.render_state_stats(ui, &stats, total_time, &self.formatter);
@@ -186,26 +191,25 @@ where
 }
 
 pub trait StateTrackerUI {
-    fn render_stats_tracker_ui(&mut self, ui: &Ui);
+    fn render_stats_tracker_ui(&mut self, ui: &dyn UiBackend);
 }
 
-
-impl<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>> StateTrackerUI for StateTracker<T, F> 
+impl<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>> StateTrackerUI
+    for StateTracker<T, F>
 where
     F: Default,
 {
-    fn render_stats_tracker_ui(&mut self, ui: &Ui) {
+    fn render_stats_tracker_ui(&mut self, ui: &dyn UiBackend) {
         let mut show = self.show;
-        ui.window("State Tracker")
-                .opened(&mut show)
-                .resizable(true)
-                .size([300.0, 400.0], imgui::Condition::FirstUseEver)
-                .always_auto_resize(true)
-                .menu_bar(true)
-                .build(|| {
-            // Menu bar
+
+        let options = WindowOptions::new()
+            .with_size([300.0, 600.0], WinCondition::FirstUseEver)
+            .with_menu_bar(true)
+            .with_resizable(true);
+
+        if let Some(_token) = ui.begin_window_simple("State Tracker", &mut show, &options) {
             if let Some(_menu_bar) = ui.begin_menu_bar() {
-                ui.menu("Options", || {
+                if let Some(_menu) = ui.begin_menu("Options") {
                     if ui.menu_item("Reset Stats") {
                         self.reset();
                     }
@@ -215,33 +219,32 @@ where
                     if ui.menu_item("Close") {
                         self.hide();
                     }
-                });
+                }
             }
-            
             // Suppression toggle
             ui.checkbox("Enable State Suppression", &mut self.suppress_enabled);
-            
+
             // Basic stats
             let filtered_time = self.get_active_time();
             let total_time = self.get_total_active_time();
-            
+
             if self.suppress_enabled && !self.suppressed_states.is_empty() {
-                ui.text(format!(
-                    "Session: {:.2}s (Filtered: {:.2}s / Total: {:.2}s)", 
+                ui.text(&format!(
+                    "Session: {:.2}s (Filtered: {:.2}s / Total: {:.2}s)",
                     self.get_total_session_duration().as_secs_f32(),
                     filtered_time.as_secs_f32(),
                     total_time.as_secs_f32()
                 ));
             } else {
-                ui.text(format!(
-                    "Session: {:.2}s (Active: {:.2}s)", 
+                ui.text(&format!(
+                    "Session: {:.2}s (Active: {:.2}s)",
                     self.get_total_session_duration().as_secs_f32(),
                     total_time.as_secs_f32()
                 ));
             }
-            
+
             ui.separator();
-            
+
             // Current state
             if let Some(ref state) = self.current_state {
                 if let Some(start) = self.current_state_start {
@@ -252,20 +255,19 @@ where
                         start.elapsed().as_secs_f32(),
                         if is_suppressed { " [SUPPRESSED]" } else { "" }
                     );
-                    
+
                     if is_suppressed {
-                        ui.text_colored([0.7, 0.7, 0.7, 1.0], &state_text);
+                        ui.text_colored([0.7, 0.7, 0.7, 1.0].into(), &state_text);
                     } else {
                         ui.text(&state_text);
                     }
                 }
                 ui.separator();
             }
-            
+
             let renderer = ProgressBarStateRenderer;
             self.render_stats(ui, &renderer);
-        });
-        
+        }
         if !show {
             self.hide();
         }
@@ -278,10 +280,10 @@ pub struct ProgressBarStateRendererWithSuppression;
 impl StateStatsRenderer for ProgressBarStateRendererWithSuppression {
     fn render_state_stats<T: Clone + PartialEq + Eq + std::hash::Hash, F: StateFormatter<T>>(
         &self,
-        ui: &Ui,
+        ui: &dyn UiBackend,
         stats: &[(T, Duration, u32, Option<Duration>)],
         total_time: Duration,
-        formatter: &F
+        formatter: &F,
     ) {
         // This uses the filtered stats - same as original
         ProgressBarStateRenderer.render_state_stats(ui, stats, total_time, formatter);
@@ -291,20 +293,21 @@ impl StateStatsRenderer for ProgressBarStateRendererWithSuppression {
 /// Render all stats with suppression indicators and interactive checkboxes
 /// Note: This is a standalone function since we can't mutate tracker through the callback
 pub fn render_all_stats_with_suppression<T, F>(
-    ui: &Ui,
+    ui: &dyn UiBackend,
     all_stats: &[(T, Duration, u32, Option<Duration>, bool)],
     total_time: Duration,
-    formatter: &F
-) 
-where 
+    formatter: &F,
+) where
     T: Clone + PartialEq + Eq + std::hash::Hash,
     F: StateFormatter<T>,
 {
-    if let Some(_table) = ui.begin_table_with_flags(
-        "state_stats_all_table", 
-        6, 
-        TableFlags::BORDERS | TableFlags::ROW_BG | TableFlags::RESIZABLE | TableFlags::SIZING_FIXED_FIT
-    ) {
+    let flags = TableFlags {
+        borders: true,
+        row_bg: true,
+        resizable: true,
+        sizing_fixed_fit: true,
+    };
+    if let Some(_table) = ui.begin_table("state_stats_all_table", 6, flags) {
         ui.table_setup_column("Suppress");
         ui.table_setup_column("State");
         ui.table_setup_column("%");
@@ -312,12 +315,14 @@ where
         ui.table_setup_column("Total");
         ui.table_setup_column("Avg");
         ui.table_headers_row();
-        
+
         for (state, time, count, avg_time, is_suppressed) in all_stats {
-            if time.is_zero() { continue; }
-            
+            if time.is_zero() {
+                continue;
+            }
+
             ui.table_next_row();
-            
+
             // Checkbox to toggle suppression (read-only for now)
             ui.table_next_column();
             let mut suppressed = *is_suppressed;
@@ -325,48 +330,49 @@ where
             ui.checkbox(&checkbox_id, &mut suppressed);
             // Note: Checkbox changes can't be handled here directly
             // This would need to return a list of state changes to apply
-            
+
             // Apply dimmed color if suppressed
             let color = if *is_suppressed {
                 [0.5, 0.5, 0.5, 1.0]
             } else {
                 [1.0, 1.0, 1.0, 1.0]
             };
-            
+
             // State
             ui.table_next_column();
-            ui.text_colored(color, &formatter.format_state(state));
-            
+            ui.text_colored(color.into(), &formatter.format_state(state));
+
             // Percentage bar
             ui.table_next_column();
-            let percentage = if total_time.is_zero() { 
-                0.0 
-            } else { 
-                (time.as_secs_f64() / total_time.as_secs_f64()) * 100.0 
+            let percentage = if total_time.is_zero() {
+                0.0
+            } else {
+                (time.as_secs_f64() / total_time.as_secs_f64()) * 100.0
             };
-            imgui::ProgressBar::new(percentage as f32 / 100.0)
-                .size([100.0, 0.0])
-                .overlay_text(&format!("{:.1}%", percentage))
-                .build(ui);
-            
+            ui.progress_bar(
+                percentage as f32 / 100.0,
+                Vec2::new(100.0, 0.0),
+                Some(&format!("{:.1}%", percentage)),
+            );
+
             // Count
             ui.table_next_column();
-            ui.text_colored(color, &format!("{}", count));
-            
+            ui.text_colored(color.into(), &format!("{}", count));
+
             // Total time
             ui.table_next_column();
-            ui.text_colored(color, &format!("{:.2}s", time.as_secs_f32()));
-            
+            ui.text_colored(color.into(), &format!("{:.2}s", time.as_secs_f32()));
+
             // Average
             ui.table_next_column();
             if let Some(avg) = avg_time {
                 if avg.as_millis() < 1 {
-                    ui.text_colored(color, &format!("{:.2}μs", avg.as_micros()));
+                    ui.text_colored(color.into(), &format!("{:.2}μs", avg.as_micros()));
                 } else {
-                    ui.text_colored(color, &format!("{:.2}ms", avg.as_millis()));
+                    ui.text_colored(color.into(), &format!("{:.2}ms", avg.as_millis()));
                 }
             } else {
-                ui.text_colored(color, "-");
+                ui.text_colored(color.into(), "-");
             }
         }
     }

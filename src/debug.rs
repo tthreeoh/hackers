@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "gui")]
+#[cfg(any(feature = "gui",feature = "ui-imgui"))]
 use imgui::Ui;
 
 // Global state for all logging
@@ -37,7 +37,7 @@ pub struct LogConfig {
     pub max_entries: usize,
     pub once_timeout_secs: u64,
     pub enabled_tags: HashMap<String, bool>,
-    #[cfg(feature = "gui")]
+    #[cfg(any(feature = "gui",feature = "ui-imgui"))]
     pub show_in_ui: bool,
     pub console_output: bool,
 }
@@ -49,7 +49,7 @@ impl Default for LogConfig {
             max_entries: 1000,
             once_timeout_secs: 1,
             enabled_tags: HashMap::new(),
-            #[cfg(feature = "gui")]
+            #[cfg(any(feature = "gui",feature = "ui-imgui"))]
             show_in_ui: true,
             console_output: true,
         }
@@ -283,7 +283,7 @@ impl LogOnce {
     }
     
     /// Render debug UI window
-    #[cfg(feature = "gui")]
+    #[cfg(any(feature = "gui",feature = "ui-imgui"))]
     pub fn render_window(ui: &Ui, show: &mut bool) {
         if !*show {
             return;
@@ -298,7 +298,7 @@ impl LogOnce {
     }
     
     /// Render debug UI (can be embedded in other windows)
-    #[cfg(feature = "gui")]
+    #[cfg(any(feature = "gui",feature = "ui-imgui"))]
     pub fn render_ui(ui: &Ui) {
         if let Ok(mut state) = LOG_STATE.lock() {
             // Configuration section

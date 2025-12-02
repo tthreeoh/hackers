@@ -1,5 +1,5 @@
 use std::any::TypeId;
-#[cfg(feature = "gui")]
+#[cfg(any(feature = "gui",feature = "ui-imgui"))]
 use imgui::Ui;
 
 pub enum TickTarget {
@@ -10,7 +10,7 @@ pub enum TickTarget {
 
 impl crate::HaCKS {
 
-    #[cfg(feature = "gui")]
+    #[cfg(any(feature = "gui",feature = "ui-imgui"))]
     pub fn before_render(&self, ui: &Ui) {
         let sorted = self.topological_sort_update();
         let tracking_enabled = self.state_tracker.borrow().enabled;
