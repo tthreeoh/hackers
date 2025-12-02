@@ -14,7 +14,7 @@ use crate::gui::{
 
 #[cfg(feature = "ui-imgui")]
 pub struct ImguiBackend<'ui> {
-    ui: &'ui imgui::Ui,
+    pub ui: &'ui imgui::Ui,
 }
 
 #[cfg(feature = "ui-imgui")]
