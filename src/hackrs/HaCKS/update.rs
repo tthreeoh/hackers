@@ -1,6 +1,9 @@
-use std::any::TypeId;
-#[cfg(any(feature = "gui",feature = "ui-imgui"))]
+#[cfg(any(feature = "gui", feature = "ui-imgui"))]
 use imgui::Ui;
+use std::any::TypeId;
+
+#[cfg(any(feature = "gui", feature = "ui-imgui"))]
+use crate::gui::UiBackend;
 
 pub enum TickTarget {
     All,
@@ -9,15 +12,15 @@ pub enum TickTarget {
 }
 
 impl crate::HaCKS {
-
-    #[cfg(any(feature = "gui",feature = "ui-imgui"))]
-    pub fn before_render(&self, ui: &Ui) {
+    #[cfg(any(feature = "gui", feature = "ui-imgui"))]
+    pub fn before_render(&self, ui: &dyn UiBackend) {
         let sorted = self.topological_sort_update();
         let tracking_enabled = self.state_tracker.borrow().enabled;
         if tracking_enabled {
             for type_id in &sorted {
                 if let Some(_module) = self.hacs.get(&type_id) {
-                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
+                    {
                         tracker.qued();
                     }
                 }
@@ -29,9 +32,10 @@ impl crate::HaCKS {
             }
         }
         if tracking_enabled {
-        for type_id in &sorted {
-            if let Some(_module) = self.hacs.get(&type_id) {
-                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+            for type_id in &sorted {
+                if let Some(_module) = self.hacs.get(&type_id) {
+                    if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
+                    {
                         tracker.stasis();
                     }
                 }
@@ -70,7 +74,9 @@ impl crate::HaCKS {
             if should_update {
                 if tracking_enabled {
                     if let Some(_module) = self.hacs.get(&type_id) {
-                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        if let Some(tracker) =
+                            self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
+                        {
                             tracker.qued();
                         }
                     }
@@ -94,22 +100,26 @@ impl crate::HaCKS {
                 if let Some(module) = self.hacs.get(&type_id) {
                     // Track update lifecycle
                     if tracking_enabled {
-                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        if let Some(tracker) =
+                            self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
+                        {
                             tracker.begin_update();
                         }
                     }
-                    
+
                     module.borrow_mut().update(self);
-                    
+
                     if tracking_enabled {
-                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        if let Some(tracker) =
+                            self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
+                        {
                             tracker.end_update();
                         }
                     }
                 }
             }
         }
-        
+
         if tracking_enabled {
             for type_id in &sorted {
                 let should_update = {
@@ -124,7 +134,9 @@ impl crate::HaCKS {
                 };
                 if should_update {
                     if let Some(_module) = self.hacs.get(&type_id) {
-                        if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id) {
+                        if let Some(tracker) =
+                            self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
+                        {
                             tracker.stasis();
                         }
                     }
