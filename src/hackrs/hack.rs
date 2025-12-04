@@ -1,6 +1,9 @@
-use crate::{gui::UiBackend, metadata::HotkeyBinding, HaCKS, HaCMetadata};
+use crate::{
+    gui::{DrawList, UiBackend},
+    metadata::HotkeyBinding,
+    HaCKS, HaCMetadata,
+};
 use erased_serde::Serialize as ErasedSerialize;
-use imgui::{DrawListMut, Ui};
 use serde::Deserialize;
 use std::any::{Any, TypeId};
 
@@ -18,8 +21,8 @@ pub trait HaCK: ErasedSerialize + Send + 'static {
         &mut self,
         ui: &dyn UiBackend,
         // fonts: Option<Fonts>,
-        draw_fg: &mut DrawListMut,
-        draw_bg: &mut DrawListMut,
+        draw_fg: &mut dyn crate::gui::DrawList,
+        draw_bg: &mut dyn crate::gui::DrawList,
     ) {
     }
     fn is_menu_enabled(&self) -> bool;
