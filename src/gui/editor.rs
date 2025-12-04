@@ -21,7 +21,7 @@ impl HaCKS {
         if let Some(_token) =
             ui.begin_window_simple("Module Debug Viewer", &mut show_window, &options)
         {
-            ui.text_colored(Color::rgba(1.0, 1.0, 0.0, 1.0), "Module Inspector");
+            ui.text_colored([1.0, 1.0, 0.0, 1.0], "Module Inspector");
             ui.separator();
 
             // --- First pass: collect (name, type_id) without borrowing modules later ---
@@ -84,17 +84,14 @@ impl HaCKS {
                             }
                             Err(e) => {
                                 ui.text_colored(
-                                    Color::rgba(1.0, 0.0, 0.0, 1.0),
+                                    [1.0, 0.0, 0.0, 1.0],
                                     &format!("Serialization error: {}", e),
                                 );
                             }
                         }
                     }
 
-                    ui.text_colored(
-                        Color::rgba(0.6, 0.6, 0.6, 1.0),
-                        &format!("TypeId: {:?}", type_id),
-                    );
+                    ui.text_colored([0.6, 0.6, 0.6, 1.0], &format!("TypeId: {:?}", type_id));
 
                     ui.unindent();
                     ui.separator();
@@ -160,7 +157,7 @@ impl HaCKS {
         // --- Window Manager ---
         if ui.collapsing_header("Window Manager", TreeNodeFlags::EMPTY) {
             ui.indent();
-            ui.text_colored(Color::rgba(0.7, 0.7, 1.0, 1.0), "Undocked Groups:");
+            ui.text_colored([0.7, 0.7, 1.0, 1.0], "Undocked Groups:");
 
             let mut to_remove = Vec::new();
             for (path, is_open) in self.windowed_groups.borrow_mut().iter() {
@@ -190,16 +187,13 @@ impl HaCKS {
 
         // --- Legend ---
         if ui.collapsing_header("Legend", TreeNodeFlags::EMPTY) {
+            ui.text_colored([0.5, 0.5, 1.0, 1.0], "Higher weight = runs/renders first");
             ui.text_colored(
-                Color::from([0.5, 0.5, 1.0, 1.0]),
-                "Higher weight = runs/renders first",
-            );
-            ui.text_colored(
-                Color::from([1.0, 1.0, 0.5, 1.0]),
+                [1.0, 1.0, 0.5, 1.0],
                 "Update enabled = module.update() runs",
             );
             ui.text_colored(
-                Color::from([1.0, 0.5, 1.0, 1.0]),
+                [1.0, 0.5, 1.0, 1.0],
                 "Render enabled = module.render_draw() runs",
             );
             ui.separator();
@@ -356,7 +350,7 @@ impl HaCKS {
                     .borrow()
                     .update_dependencies();
                 if !deps.is_empty() {
-                    ui.text_colored(Color::from([0.7, 0.7, 0.7, 1.0]), "Dependencies:");
+                    ui.text_colored([0.7, 0.7, 0.7, 1.0], "Dependencies:");
                     ui.same_line();
                     let dep_names: Vec<String> = deps
                         .iter()
@@ -373,19 +367,19 @@ impl HaCKS {
     }
 
     pub fn render_weight_visualization_content(&mut self, ui: &dyn UiBackend) {
-        if ui.radio_button("Menu Order", *self.viz_mode.borrow() == 0) {
+        if ui.radio_button_bool("Menu Order", *self.viz_mode.borrow() == 0) {
             *self.viz_mode.borrow_mut() = 0;
         }
         ui.same_line();
-        if ui.radio_button("Window Order", *self.viz_mode.borrow() == 1) {
+        if ui.radio_button_bool("Window Order", *self.viz_mode.borrow() == 1) {
             *self.viz_mode.borrow_mut() = 1;
         }
         ui.same_line();
-        if ui.radio_button("Draw Order", *self.viz_mode.borrow() == 2) {
+        if ui.radio_button_bool("Draw Order", *self.viz_mode.borrow() == 2) {
             *self.viz_mode.borrow_mut() = 2;
         }
         ui.same_line();
-        if ui.radio_button("Update Order", *self.viz_mode.borrow() == 3) {
+        if ui.radio_button_bool("Update Order", *self.viz_mode.borrow() == 3) {
             *self.viz_mode.borrow_mut() = 3;
         }
 
@@ -452,7 +446,7 @@ impl HaCKS {
         let draw_list = ui.get_window_draw_list();
         let mut draw_list = draw_list;
         let x = ui.get_cursor_screen_pos().x;
-        let available_width = ui.get_content_region_avail().x;
+        let available_width = ui.content_region_avail().x;
         let bar_height = 24.0;
         let spacing = 5.0;
 

@@ -1,8 +1,7 @@
 use crate::{
-    gui::{UiBackend, WinCondition, WindowOptions},
+    gui::{DrawList, UiBackend, WinCondition, WindowOptions},
     HaCKS,
 };
-use imgui::DrawListMut;
 use std::{
     any::TypeId,
     collections::{BTreeMap, HashMap},
@@ -325,8 +324,8 @@ impl HaCKS {
     pub fn render_draw(
         &mut self,
         ui: &dyn UiBackend,
-        draw_list_fg: &mut DrawListMut,
-        draw_list_bg: &mut DrawListMut,
+        draw_list_fg: &mut dyn DrawList,
+        draw_list_bg: &mut dyn DrawList,
     ) {
         self.triggered_hotkeys.borrow_mut().clear();
         *self.triggered_hotkeys.borrow_mut() = self.hotkey_manager.borrow_mut().poll_all(ui);
@@ -363,6 +362,11 @@ impl HaCKS {
                 }
             }
         }
+
+        // Wrap DrawListMut in ImguiDrawList to convert to trait objects
+        // use crate::gui::imgui_backend::ImguiDrawList;
+        // let mut fg_wrapper = ImguiDrawList { list: draw_list_fg };
+        // let mut bg_wrapper = ImguiDrawList { list: draw_list_bg };
 
         for type_id in independent {
             if let Some(module_rc) = self.hacs.get(&type_id) {

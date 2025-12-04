@@ -7,9 +7,10 @@ use std::any::Any;
 
 #[cfg(feature = "ui-imgui")]
 use crate::gui::{
-    Color, ComboBoxToken, DrawList, IoState, Key, MenuBarToken, MenuToken, MouseButton,
-    SelectableBuilder, StyleColor, StyleToken, TableFlags, TableToken, TreeNodeFlags,
-    TreeNodeToken, UiBackend, Vec2, WinCondition, WindowOptions, WindowToken,
+    ChildWindowBuilder, Color, ColorEdit4Builder, ComboBoxToken, DrawList, IoState, Key,
+    MenuBarToken, MenuToken, MouseButton, SelectableBuilder, StyleColor, StyleToken, TableFlags,
+    TableToken, TreeNodeBuilder, TreeNodeFlags, TreeNodeToken, UiBackend, Vec2, WinCondition,
+    WindowOptions, WindowToken,
 };
 
 #[cfg(feature = "ui-imgui")]
@@ -31,12 +32,15 @@ impl<'ui> ImguiBackend<'ui> {
 
 #[cfg(feature = "ui-imgui")]
 impl<'ui> UiBackend for ImguiBackend<'ui> {
+    fn native_ui(&self) -> &imgui::Ui {
+        self.ui
+    }
     fn text(&self, text: &str) {
         self.ui.text(text);
     }
 
-    fn text_colored(&self, color: Color, text: &str) {
-        self.ui.text_colored(color.to_array(), text);
+    fn text_colored(&self, color: [f32; 4], text: &str) {
+        self.ui.text_colored(color, text);
     }
 
     fn text_wrapped(&self, text: &str) {
@@ -47,8 +51,20 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         self.ui.text_disabled(text);
     }
 
+    fn bullet_text(&self, text: &str) {
+        self.ui.bullet_text(text);
+    }
+
     fn same_line(&self) {
         self.ui.same_line();
+    }
+
+    fn same_line_with_pos(&self, pos_x: f32) {
+        self.ui.same_line_with_pos(pos_x);
+    }
+
+    fn align_text_to_frame_padding(&self) {
+        self.ui.align_text_to_frame_padding();
     }
 
     fn separator(&self) {
@@ -91,11 +107,32 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         self.ui.checkbox(label, value)
     }
 
-    fn radio_button(&self, label: &str, active: bool) -> bool {
+    fn radio_button_bool(&self, label: &str, active: bool) -> bool {
         self.ui.radio_button_bool(label, active)
     }
 
-    fn input_text(&self, label: &str, buffer: &mut String) -> bool {
+    // fn radio_button<T>(&self, label: &str, value: &mut T, button_value: T) -> bool
+    // where
+    //     T: Copy + PartialEq,
+    // {
+    //     self.ui.radio_button(label, value, button_value)
+    // }
+
+    fn radio_button_usize(&self, label: &str, value: &mut usize, test_value: usize) -> bool {
+        self.ui.radio_button(label, value, test_value)
+    }
+
+    fn disabled(&self, disabled: bool, f: &mut dyn FnMut()) {
+        self.ui.disabled(disabled, || f());
+    }
+
+    fn begin_disabled(&self, disabled: bool) -> crate::gui::DisabledToken<'_> {
+        crate::gui::DisabledToken {
+            token: self.ui.begin_disabled(disabled),
+        }
+    }
+
+    fn input_text_simple(&self, label: &str, buffer: &mut String) -> bool {
         self.ui.input_text(label, buffer).build()
     }
 
@@ -137,11 +174,51 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         self.ui.input_float2(label, values).build()
     }
 
+    fn slider_int(&self, label: &str, min: i32, max: i32, value: &mut i32) -> bool {
+        self.ui.slider(label, min, max, value)
+    }
+
+    fn slider_float(&self, label: &str, min: f32, max: f32, value: &mut f32) -> bool {
+        self.ui.slider(label, min, max, value)
+    }
+
+    fn color_edit3(&self, label: &str, color: &mut [f32; 3]) -> bool {
+        self.ui.color_edit3(label, color)
+    }
+
+    fn color_edit4(&self, label: &str, color: &mut [f32; 4]) -> bool {
+        self.ui.color_edit4(label, color)
+    }
+
+    fn color_edit3_config<'a>(
+        &'a self,
+        label: &'a str,
+        color: &'a mut [f32; 3],
+    ) -> crate::gui::ColorEdit3Builder<'a> {
+        crate::gui::ColorEdit3Builder {
+            ui: self.ui,
+            label,
+            color,
+            inputs: true,
+            show_label: true,
+            tooltip: true,
+        }
+    }
+
+    fn selectable_config<'a>(&'a self, label: &'a str) -> crate::gui::SelectableBuilder<'a, 'a> {
+        crate::gui::SelectableBuilder {
+            ui: self.ui,
+            label,
+            selected: false,
+            disabled: false,
+        }
+    }
+
     fn begin_window_with_options(
         &self,
         title: &str,
-        options: &WindowOptions,
-    ) -> Option<WindowToken<'_>> {
+        options: &crate::gui::WindowOptions,
+    ) -> Option<crate::gui::WindowToken<'_>> {
         let mut window = self.ui.window(title);
 
         if let Some((size, cond)) = options.size {
@@ -164,16 +241,17 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
             window = window.resizable(false);
         }
 
-        window.begin().map(|t| WindowToken { token: t })
+        window.begin().map(|t| crate::gui::WindowToken { token: t })
     }
 
     fn begin_window_simple(
         &self,
         title: &str,
         opened: &mut bool,
-        options: &WindowOptions,
-    ) -> Option<WindowToken<'_>> {
-        let mut window = self.ui.window(title).opened(opened);
+        options: &crate::gui::WindowOptions,
+    ) -> Option<crate::gui::WindowToken<'_>> {
+        let mut window = self.ui.window(title);
+        window = window.opened(opened);
 
         if let Some((size, cond)) = options.size {
             window = window.size(size, convert_condition(cond));
@@ -195,7 +273,7 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
             window = window.resizable(false);
         }
 
-        window.begin().map(|t| WindowToken { token: t })
+        window.begin().map(|t| crate::gui::WindowToken { token: t })
     }
 
     fn begin_child(&self, id: &str, size: Vec2, border: bool, ch_fn: &mut fn()) -> bool {
@@ -223,7 +301,7 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         self.ui.begin_menu(label).map(|t| MenuToken { token: t })
     }
 
-    fn end_menu(&self, token: Option<MenuBarToken<'_>>) {
+    fn end_menu(&self, _token: Option<MenuBarToken<'_>>) {
         // RAII handles it
     }
 
@@ -300,6 +378,7 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
             ui: self.ui,
             label,
             selected: false,
+            disabled: false,
         }
     }
 
@@ -316,15 +395,15 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
     }
 
     fn push_id_str(&self, id: &str) {
-        self.ui.push_id(id);
+        let _ = self.ui.push_id(id);
     }
 
     fn push_id_int(&self, id: i32) {
-        self.ui.push_id_int(id);
+        let _ = self.ui.push_id_int(id);
     }
 
     fn push_id_usize(&self, id: usize) {
-        self.ui.push_id_usize(id);
+        let _ = self.ui.push_id_usize(id);
     }
 
     fn pop_id(&self) {
@@ -390,12 +469,12 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         Vec2::from(self.ui.window_size())
     }
 
-    fn get_content_region_avail(&self) -> Vec2 {
-        Vec2::from(self.ui.content_region_avail())
-    }
-
     fn current_font_size(&self) -> f32 {
         self.ui.current_font_size()
+    }
+
+    fn content_region_avail(&self) -> Vec2 {
+        Vec2::from(self.ui.content_region_avail())
     }
 
     fn get_window_draw_list(&self) -> Box<dyn DrawList + '_> {
@@ -434,6 +513,16 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         }
     }
 
+    fn is_mouse_down(&self, button: MouseButton) -> bool {
+        match button {
+            MouseButton::Left => self.ui.is_mouse_down(imgui::MouseButton::Left),
+            MouseButton::Right => self.ui.is_mouse_down(imgui::MouseButton::Right),
+            MouseButton::Middle => self.ui.is_mouse_down(imgui::MouseButton::Middle),
+            MouseButton::Extra1 => self.ui.is_mouse_down(imgui::MouseButton::Extra1),
+            MouseButton::Extra2 => self.ui.is_mouse_down(imgui::MouseButton::Extra2),
+        }
+    }
+
     fn get_mouse_pos(&self) -> Vec2 {
         Vec2::from(self.ui.io().mouse_pos)
     }
@@ -445,6 +534,7 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
             key_ctrl: io.key_ctrl,
             key_alt: io.key_alt,
             mouse_pos: Vec2::from(io.mouse_pos),
+            display_size: Vec2::from(io.display_size),
         }
     }
 
@@ -456,7 +546,7 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
         Vec2::from(self.ui.calc_text_size(text))
     }
 
-    fn push_style_color(&self, style: StyleColor, color: Color) -> StyleToken {
+    fn push_style_color(&self, style: StyleColor, color: [f32; 4]) -> StyleToken<'_> {
         let imgui_style = match style {
             StyleColor::Text => imgui::StyleColor::Text,
             StyleColor::TextDisabled => imgui::StyleColor::TextDisabled,
@@ -513,7 +603,7 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
             StyleColor::ModalWindowDimBg => imgui::StyleColor::ModalWindowDimBg,
         };
 
-        let token = self.ui.push_style_color(imgui_style, color.to_array());
+        let token = self.ui.push_style_color(imgui_style, color);
         StyleToken { token }
     }
 
@@ -530,13 +620,147 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
 
         bar.build(self.ui);
     }
+
+    fn push_font_by_index(&self, index: usize) -> Option<crate::gui::FontToken<'_>> {
+        let fonts = self.ui.fonts();
+        let font_id = fonts.fonts().get(index).copied()?;
+        Some(crate::gui::FontToken {
+            token: self.ui.push_font(font_id),
+        })
+    }
+
+    fn get_fonts_count(&self) -> usize {
+        self.ui.fonts().fonts().len()
+    }
+
+    fn list_box(
+        &self,
+        label: &str,
+        current_item: &mut i32,
+        items: &[&str],
+        _height_in_items: i32,
+    ) -> bool {
+        let mut changed = false;
+        let height_mode = imgui::ListBox::new(label);
+
+        height_mode.build(self.ui, || {
+            for (i, item) in items.iter().enumerate() {
+                let is_selected = *current_item == i as i32;
+                if self
+                    .ui
+                    .selectable_config(item)
+                    .selected(is_selected)
+                    .build()
+                {
+                    *current_item = i as i32;
+                    changed = true;
+                }
+            }
+        });
+        changed
+    }
+
+    fn slider(&self, label: &str, min: f32, max: f32, value: &mut f32) -> bool {
+        self.ui.slider(label, min, max, value)
+    }
+
+    fn child_window<'a>(&'a self, id: &'a str) -> ChildWindowBuilder<'a> {
+        ChildWindowBuilder {
+            ui: self.ui,
+            id,
+            size: [0.0, 0.0],
+            border: false,
+        }
+    }
+
+    fn tree_node_config<'a>(&'a self, label: &'a str) -> TreeNodeBuilder<'a> {
+        TreeNodeBuilder {
+            ui: self.ui,
+            label,
+            flags: TreeNodeFlags::default(),
+        }
+    }
+
+    // ===== New Method Implementations =====
+
+    fn window<'a>(&'a self, name: &'a str) -> crate::gui::WindowBuilder<'a> {
+        crate::gui::WindowBuilder {
+            ui: self.ui,
+            name,
+            opened: None,
+            position: None,
+            size: None,
+            bg_alpha: None,
+            flags: None,
+        }
+    }
+
+    fn tooltip_text(&self, text: &str) {
+        if self.ui.is_item_hovered() {
+            self.ui.tooltip_text(text);
+        }
+    }
+
+    fn input_text<'a>(
+        &'a self,
+        label: &'a str,
+        buffer: &'a mut String,
+    ) -> crate::gui::InputTextBuilder<'a> {
+        crate::gui::InputTextBuilder {
+            ui: self.ui,
+            label,
+            buffer,
+            enter_returns_true: false,
+            read_only: false,
+        }
+    }
+
+    fn scroll_y(&self) -> f32 {
+        self.ui.scroll_y()
+    }
+
+    fn scroll_max_y(&self) -> f32 {
+        self.ui.scroll_max_y()
+    }
+
+    fn set_scroll_here_y(&self) {
+        self.ui.set_scroll_here_y();
+    }
+
+    fn frame_count(&self) -> u32 {
+        self.ui.frame_count() as u32
+    }
+
+    fn clipboard_text(&self) -> Option<String> {
+        self.ui.clipboard_text().map(|s| s.to_string())
+    }
+
+    fn set_clipboard_text(&self, text: &str) {
+        self.ui.set_clipboard_text(text);
+    }
+
+    fn text_line_height(&self) -> f32 {
+        self.ui.text_line_height()
+    }
+
+    fn begin_table_header(&self) {
+        self.ui.table_headers_row();
+    }
+
+    unsafe fn style(&self) -> &imgui::Style {
+        self.ui.style()
+    }
+
+    fn input_scalar(&self, label: &str, value: &mut i32) -> bool {
+        self.ui.input_scalar(label, value).build()
+    }
 }
 
 // ===== ImGui DrawList Implementation =====
 
 #[cfg(feature = "ui-imgui")]
-struct ImguiDrawList<'a> {
-    list: imgui::DrawListMut<'a>,
+pub struct ImguiDrawList<'a> {
+    pub(crate) list: imgui::DrawListMut<'a>,
 }
 
 #[cfg(feature = "ui-imgui")]
@@ -620,7 +844,7 @@ fn convert_tree_flags(flags: TreeNodeFlags) -> imgui::TreeNodeFlags {
 }
 
 #[cfg(feature = "ui-imgui")]
-fn convert_condition(cond: WinCondition) -> imgui::Condition {
+pub(crate) fn convert_condition(cond: WinCondition) -> imgui::Condition {
     match cond {
         WinCondition::Always => imgui::Condition::Always,
         WinCondition::Once => imgui::Condition::Once,
@@ -724,5 +948,31 @@ fn convert_key(key: Key) -> imgui::Key {
         Key::Keypad7 => imgui::Key::Keypad7,
         Key::Keypad8 => imgui::Key::Keypad8,
         Key::Keypad9 => imgui::Key::Keypad9,
+        // Punctuation
+        Key::Comma => imgui::Key::Comma,
+        Key::Period => imgui::Key::Period,
+        Key::Slash => imgui::Key::Slash,
+        Key::Semicolon => imgui::Key::Semicolon,
+        Key::Apostrophe => imgui::Key::Apostrophe,
+        Key::LeftBracket => imgui::Key::LeftBracket,
+        Key::RightBracket => imgui::Key::RightBracket,
+        Key::Backslash => imgui::Key::Backslash,
+        Key::Minus => imgui::Key::Minus,
+        Key::Equal => imgui::Key::Equal,
+        // Modifiers
+        Key::LeftShift => imgui::Key::LeftShift,
+        Key::RightShift => imgui::Key::RightShift,
+        Key::LeftCtrl => imgui::Key::LeftCtrl,
+        Key::RightCtrl => imgui::Key::RightCtrl,
+        Key::LeftAlt => imgui::Key::LeftAlt,
+        Key::RightAlt => imgui::Key::RightAlt,
+        Key::LeftSuper => imgui::Key::LeftSuper,
+        Key::RightSuper => imgui::Key::RightSuper,
+        Key::CapsLock => imgui::Key::CapsLock,
+        Key::ScrollLock => imgui::Key::ScrollLock,
+        Key::NumLock => imgui::Key::NumLock,
+        Key::PrintScreen => imgui::Key::PrintScreen,
+        Key::Pause => imgui::Key::Pause,
+        Key::Menu => imgui::Key::Menu,
     }
 }

@@ -168,7 +168,7 @@ impl ProgressBarStateRenderer {
         );
 
         ui.set_cursor_pos(Vec2::new(text_x, text_y));
-        ui.text_colored(Color::from(color2), &state_str);
+        ui.text_colored(color2, &state_str);
 
         // draw_list.pop_clip_rect();
     }
@@ -257,7 +257,7 @@ where
                     );
 
                     if is_suppressed {
-                        ui.text_colored([0.7, 0.7, 0.7, 1.0].into(), &state_text);
+                        ui.text_colored([0.7, 0.7, 0.7, 1.0], &state_text);
                     } else {
                         ui.text(&state_text);
                     }
@@ -340,7 +340,7 @@ pub fn render_all_stats_with_suppression<T, F>(
 
             // State
             ui.table_next_column();
-            ui.text_colored(color.into(), &formatter.format_state(state));
+            ui.text_colored(color, &formatter.format_state(state));
 
             // Percentage bar
             ui.table_next_column();
@@ -357,22 +357,22 @@ pub fn render_all_stats_with_suppression<T, F>(
 
             // Count
             ui.table_next_column();
-            ui.text_colored(color.into(), &format!("{}", count));
+            ui.text_colored(color, &format!("{}", count));
 
             // Total time
             ui.table_next_column();
-            ui.text_colored(color.into(), &format!("{:.2}s", time.as_secs_f32()));
+            ui.text_colored(color, &format!("{:.2}s", time.as_secs_f32()));
 
             // Average
             ui.table_next_column();
             if let Some(avg) = avg_time {
                 if avg.as_millis() < 1 {
-                    ui.text_colored(color.into(), &format!("{:.2}μs", avg.as_micros()));
+                    ui.text_colored(color, &format!("{:.2}μs", avg.as_micros()));
                 } else {
-                    ui.text_colored(color.into(), &format!("{:.2}ms", avg.as_millis()));
+                    ui.text_colored(color, &format!("{:.2}ms", avg.as_millis()));
                 }
             } else {
-                ui.text_colored(color.into(), "-");
+                ui.text_colored(color, "-");
             }
         }
     }

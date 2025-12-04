@@ -257,7 +257,7 @@ pub mod gui_integration {
                         let suppressed_count = tracker.lifecycle_tracker.suppressed_states.len();
                         if suppressed_count > 0 {
                             ui.text_colored(
-                                Color::from([0.7, 0.7, 0.0, 1.0]),
+                                [0.7, 0.7, 0.0, 1.0],
                                 &format!("({} states suppressed)", suppressed_count),
                             );
                         }
@@ -480,7 +480,7 @@ impl PhaseTimingVisualizer {
             .max()
             .unwrap_or(1) as f32;
 
-        let available_width = ui.get_content_region_avail().x - 20.0;
+        let available_width = ui.content_region_avail().x - 20.0;
 
         for (i, entry) in recent.iter().enumerate() {
             let duration_ms = entry.duration_since_last.as_micros() as f32 / 1000.0;
@@ -513,7 +513,7 @@ impl PhaseTimingVisualizer {
             );
 
             ui.set_cursor_screen_pos(Vec2::new(cursor_pos.x + 5.0, cursor_pos.y + 3.0));
-            ui.text_colored(Color::new(1.0, 1.0, 1.0, 1.0), &label);
+            ui.text_colored([1.0, 1.0, 1.0, 1.0], &label);
 
             // Move cursor for next item
             ui.set_cursor_screen_pos(Vec2::new(cursor_pos.x, cursor_pos.y + bar_height + 5.0));
@@ -714,7 +714,7 @@ impl PhaseTimingVisualizer {
         if let Some(duration) = tracker.time_since_last_phase(HaCKLifecycleState::Updating) {
             ui.separator();
             ui.text_colored(
-                Color::from([1.0, 1.0, 0.0, 1.0]),
+                [1.0, 1.0, 0.0, 1.0],
                 &format!("Time since last update: {:.2}s", duration.as_secs_f32()),
             );
         }

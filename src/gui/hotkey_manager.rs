@@ -413,9 +413,8 @@ impl HotkeyManager {
                     format!("{}##{}", Self::format_binding(binding), id)
                 };
 
-                let _token = conflict.map(|_| {
-                    ui.push_style_color(StyleColor::Button, Color::new(0.8, 0.2, 0.2, 1.0))
-                });
+                let _token =
+                    conflict.map(|_| ui.push_style_color(StyleColor::Button, [0.8, 0.2, 0.2, 1.0]));
 
                 if ui.button(&btn_label) {
                     self.capture_state = if is_capturing { None } else { Some(id.clone()) };
@@ -439,7 +438,10 @@ impl HotkeyManager {
 
                 ui.same_line();
                 ui.set_next_item_width(100.0);
-                if ui.input_text(&format!("##{}_id", id), &mut binding.id) {
+                if ui
+                    .input_text(&format!("##{}_id", id), &mut binding.id)
+                    .build()
+                {
                     modified = true;
                 }
 
@@ -688,7 +690,10 @@ impl HaCMetadata {
                 ui.same_line();
                 // Make ID editable
                 ui.set_next_item_width(100.0);
-                if ui.input_text(&format!("##{}_id", id), &mut binding.id) {
+                if ui
+                    .input_text(&format!("##{}_id", id), &mut binding.id)
+                    .build()
+                {
                     modified = true;
                 }
 
