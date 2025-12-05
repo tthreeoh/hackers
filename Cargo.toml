@@ -11,11 +11,12 @@ keywords = ["modding"]
 categories = ["development"]
 
 
-
 [dependencies]
 hackers_derive = { path = "./hackers_derive" }
 # hudhook = { git = "https://github.com/veeenu/hudhook.git", rev = "6a5c2ad34e9687f6426d7a38831d4411ca36023a" }
 imgui = { version = "0.12", features = ["tables-api"], optional = true }
+egui = { version = "0.28", optional = true }
+eframe = { version = "0.28", optional = true }
 image = { version = "0.25.6", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
@@ -23,7 +24,12 @@ serde_yml = "0.0.12"
 erased-serde = "0.4"
 heck = "0.5"
 preferences-ron = "2.0.1"
-smallvec = { version = "1.15", features = ["const_generics", "const_new", "specialization", "write"] }
+smallvec = { version = "1.15", features = [
+    "const_generics",
+    "const_new",
+    "specialization",
+    "write",
+] }
 lazy_static = "1.5.0"
 log = "0.4"
 linked_hash_set = "0.1.5"
@@ -41,7 +47,7 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_LibraryLoader",
-]}
+] }
 ndarray = "0.16"
 tracing = { version = "0.1.41", features = ["log"] }
 libloading = "0.8"
@@ -50,9 +56,13 @@ ron = "0.11.0"
 strum = { version = "0.26", features = ["derive"] }
 
 [features]
-default = ["ui-imgui"]  # Keep imgui as default for backward compat
+default = ["ui-imgui"]                # Keep imgui as default for backward compat
 ui-imgui = ["dep:imgui", "dep:image"]
-# ui-egui = ["dep:egui"]
-ui = []  # Base UI feature flag
+ui-egui = ["dep:egui", "dep:eframe"]
+ui = []                               # Base UI feature flag
 
 gui = ["dep:imgui", "dep:image"] #legacy
+
+[[example]]
+name = "egui_standalone"
+required-features = ["ui-egui"]

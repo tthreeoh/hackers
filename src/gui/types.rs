@@ -463,7 +463,7 @@ pub enum MouseButton {
 }
 
 /// IO State
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct IoState {
     pub key_shift: bool,
     pub key_ctrl: bool,

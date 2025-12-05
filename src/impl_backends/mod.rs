@@ -8,5 +8,5 @@ pub mod egui_backend;
 #[cfg(feature = "ui-imgui")]
 pub use imgui_backend::ImguiBackend as DefaultBackend;
 
-// #[cfg(feature = "ui-egui")]
-// pub use egui_backend::EguiBackend as DefaultBackend;
+#[cfg(all(feature = "ui-egui", not(feature = "ui-imgui")))]
+pub use egui_backend::EguiBackend as DefaultBackend;
