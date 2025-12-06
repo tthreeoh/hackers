@@ -1,59 +1,60 @@
-use std::cell::{Ref, RefCell, RefMut};
-#[allow(unused)]
-use std::rc::Rc;
 #[allow(unused)]
 use libloading::Library;
 use std::any::{Any, TypeId};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
-pub mod sorting;
-pub mod update;
+#[allow(unused)]
+use std::rc::Rc;
+pub mod events;
+pub mod iteration;
+pub mod lifecycle;
 pub mod persistence;
 pub mod registry;
-pub mod lifecycle;
-pub mod iteration;
 pub mod search;
-pub mod events;
+pub mod sorting;
+pub mod update;
 
-
-pub use update::*;
+pub use events::*;
+pub use iteration::*;
 #[allow(unused)]
 pub use registry::*;
-pub use iteration::*;
 pub use search::*;
-pub use events::*;
+pub use update::*;
 
-use crate::{GlobalStateTracker, RuntimeSyncManager, SyncRegistry};
 use crate::access::AccessManager;
 #[cfg(feature = "ui-imgui")]
 use crate::gui::hotkey_manager::HotkeyManager;
+use crate::{GlobalStateTracker, RuntimeSyncManager, SyncRegistry};
 
 use crate::hack::HaCK;
 #[allow(unused)]
 pub struct HaCKS {
     // Event bus needs RefCell for interior mutability
     pub event_bus: RefCell<Vec<HaCSEvent>>,
-    
+
     pub hacs: HashMap<TypeId, Rc<RefCell<dyn HaCK>>>,
     pub init_data: HashMap<TypeId, Box<dyn Any + Send>>,
-    
+
     // These need RefCell if modified during &self methods
     pub menu_dirty: RefCell<bool>,
     pub menu_cache: RefCell<Option<MenuCache>>,
-    
+
     pub hotkey_manager: RefCell<HotkeyManager>,
     pub triggered_hotkeys: RefCell<Vec<String>>,
-    
+
     pub show_debug_window: RefCell<bool>,
     pub windowed_groups: RefCell<HashMap<Vec<String>, bool>>,
     pub metadata_window: RefCell<bool>,
     pub viz_mode: RefCell<u32>,
     pub metadata_window_viz: RefCell<bool>,
     pub color_scheme: RefCell<usize>,
-    
+
     pub access_manager: RefCell<AccessManager>,
     pub sync_registry: RefCell<Option<SyncRegistry>>,
     pub runtime_sync_manager: RefCell<Option<RuntimeSyncManager>>,
     pub state_tracker: RefCell<GlobalStateTracker>,
+
+    pub loaded_libs: Vec<DynamicHaC>,
 }
 
 #[allow(unused)]
@@ -77,6 +78,7 @@ impl HaCKS {
             sync_registry: RefCell::new(None),
             runtime_sync_manager: RefCell::new(None),
             state_tracker: RefCell::new(GlobalStateTracker::new()),
+            loaded_libs: Vec::new(),
         }
     }
 
@@ -88,7 +90,7 @@ impl HaCKS {
     pub fn show_state_tracker(&self) {
         self.state_tracker.borrow_mut().show_window = true;
     }
-    
+
     pub fn toggle_metadata_editor(&self) {
         let mut metadata_window = *self.metadata_window.borrow_mut();
         *self.metadata_window.borrow_mut() = !metadata_window;
@@ -110,18 +112,18 @@ impl HaCKS {
     pub fn init_sync_registry(&self, registry: SyncRegistry) {
         *self.sync_registry.borrow_mut() = Some(registry);
     }
-    
+
     pub fn init_runtime_sync_manager(&self, manager: RuntimeSyncManager) {
         *self.runtime_sync_manager.borrow_mut() = Some(manager);
     }
-    
+
     /// Run all syncs
     pub fn sync_modules(&self) {
         // Run type-safe syncs
         if let Some(registry) = self.sync_registry.borrow().as_ref() {
             registry.apply_all(self);
         }
-        
+
         // Run runtime syncs
         if let Some(manager) = self.runtime_sync_manager.borrow_mut().as_mut() {
             manager.apply_all(self);
@@ -168,9 +170,8 @@ impl HaCKS {
 
     pub fn get_state<T: HaCK + 'static, R, F: FnOnce(&T) -> R>(&self, f: F) -> Option<R> {
         self.get_module::<T>().map(|m| f(&*m))
-        }
-        
-        
+    }
+
     /// Mutably operate on a module safely.
     pub fn with_module_mut<T: HaCK + 'static, F: FnOnce(&mut T)>(&self, f: F) {
         if let Some(mut m) = self.get_module_mut::<T>() {
@@ -185,7 +186,6 @@ pub struct ModuleAccess<'a> {
 }
 
 impl<'a> ModuleAccess<'a> {
-    
     pub fn new(hacs: &'a mut HaCKS, self_id: TypeId) -> Self {
         Self { hacs, self_id }
     }

@@ -13,8 +13,10 @@ categories = ["development"]
 
 [dependencies]
 hackers_derive = { path = "./hackers_derive" }
-# hudhook = { git = "https://github.com/veeenu/hudhook.git", rev = "6a5c2ad34e9687f6426d7a38831d4411ca36023a" }
-imgui = { version = "0.12", features = ["tables-api"], optional = true }
+imgui = { version = "0.12", features = [
+    "tables-api",
+], optional = true } # HARD VERSION DEPENDENCY
+hudhook = { git = "https://github.com/veeenu/hudhook.git", rev = "6a5c2ad34e9687f6426d7a38831d4411ca36023a" }
 egui = { version = "0.28", optional = true }
 eframe = { version = "0.28", optional = true }
 image = { version = "0.25.6", optional = true }
@@ -38,7 +40,7 @@ regex = "1.11.1"
 num_enum = "0.7.4"
 widestring = "1.2"
 winapi = { version = "0.3", features = ["xinput"] }
-windows = { version = "0.61", features = [
+windows = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     "Win32_System_Diagnostics_ToolHelp",
@@ -54,6 +56,7 @@ libloading = "0.8"
 anyhow = "1.0"
 ron = "0.11.0"
 strum = { version = "0.26", features = ["derive"] }
+abi_stable = "0.11.3"
 
 [features]
 default = ["ui-imgui"]                # Keep imgui as default for backward compat
@@ -64,5 +67,18 @@ ui = []                               # Base UI feature flag
 gui = ["dep:imgui", "dep:image"] #legacy
 
 [[example]]
+name = "imgui_dll_runner"
+required-features = ["ui-imgui"]
+
+[[example]]
 name = "egui_standalone"
 required-features = ["ui-egui"]
+
+[dev-dependencies]
+glium = "0.34"
+imgui-glium-renderer = "0.12"
+imgui-winit-support = "0.12"
+winit = { version = "0.29", default-features = false, features = ["rwh_05"] }
+wgpu = "25"
+pollster = "0.3"
+imgui-wgpu = "0.25"
