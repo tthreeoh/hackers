@@ -154,6 +154,19 @@ impl HaCKS {
         }
 
         *self.menu_cache.borrow_mut() = Some(cache);
+
+        // Render dynamic modules
+        for module_rc in &self.dynamic_modules {
+            let mut module = module_rc.borrow_mut();
+            // Cast to trait object to access HaCK methods
+            let hack: &mut dyn crate::HaCK = &mut *module;
+            if hack.is_menu_enabled() {
+                let name = hack.name().to_string();
+                if let Some(_menu) = ui.begin_menu(&name) {
+                    hack.render_menu(ui);
+                }
+            }
+        }
     }
 
     fn render_grouped_entries_tracked(

@@ -234,7 +234,10 @@ lazy_static! {
 
 impl HaCK for ForeignHaCK {
     fn name(&self) -> &str {
-        "ForeignModule" // TODO: Cache name from inner
+        // Cache the name as a String since we can't return a temporary
+        // For now, return a static string that represents it's foreign
+        // TODO: Store name in ForeignHaCK struct during creation
+        self.inner.name().as_str()
     }
 
     fn init(&mut self) {

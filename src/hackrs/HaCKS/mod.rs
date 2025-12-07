@@ -55,6 +55,7 @@ pub struct HaCKS {
     pub state_tracker: RefCell<GlobalStateTracker>,
 
     pub loaded_libs: Vec<DynamicHaC>,
+    pub dynamic_modules: Vec<Rc<RefCell<crate::hackrs::stable_abi::ForeignHaCK>>>,
 }
 
 #[allow(unused)]
@@ -79,6 +80,7 @@ impl HaCKS {
             runtime_sync_manager: RefCell::new(None),
             state_tracker: RefCell::new(GlobalStateTracker::new()),
             loaded_libs: Vec::new(),
+            dynamic_modules: Vec::new(),
         }
     }
 

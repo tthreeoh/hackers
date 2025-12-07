@@ -14,6 +14,7 @@ use crate::hackrs::stable_abi::HackersModule_Ref;
 pub struct DynamicHaC {
     pub root_module: HackersModule_Ref,
     pub type_id: TypeId,
+    pub path: String,
 }
 
 impl std::fmt::Debug for DynamicHaC {
@@ -182,6 +183,18 @@ impl crate::HaCKS {
         use crate::hackrs::stable_abi::HackersModule_Ref;
         use abi_stable::library::RootModule;
 
+        // Get path as string for duplicate checking and storage
+        let path_buf = path.as_ref().to_path_buf();
+        let path_str = path_buf.to_string_lossy().to_string();
+
+        // Check if already loaded
+        for lib in &self.loaded_libs {
+            if lib.path == path_str {
+                println!("Plugin already loaded: {}", path_str);
+                return Ok(());
+            }
+        }
+
         // Load the module
         // We use unsafe because loading code is inherently unsafe as it executes arbitrary code.
         let root_module = unsafe { HackersModule_Ref::load_from_file(path.as_ref()) }?;
@@ -236,25 +249,77 @@ impl crate::HaCKS {
 
         let name = foreign_hack.inner.name().to_string();
 
-        // We need to keep the library alive.
+        // Store path and library
         self.loaded_libs.push(DynamicHaC {
             root_module,
             type_id,
+            path: path_str,
         });
 
-        // Register.
-        self.register_boxed(Rc::new(RefCell::new(foreign_hack)));
+        // Store in dynamic_modules vector for multi-DLL support
+        self.dynamic_modules
+            .push(Rc::new(RefCell::new(foreign_hack)));
 
         Ok(())
     }
 
-    /// Unload a dynamically loaded HaC and remove it from the container.
-    pub fn unload_dynamic(&mut self, _type_id: TypeId) -> Result<(), Box<dyn std::error::Error>> {
-        // Placeholder implementation
-        // To properly unload, we need to remove from `hacs` and `loaded_libs`.
-        // Since all use ForeignHaCK type_id, we might unload the wrong one or all?
-        // For now, just clear loaded_libs?
+    /// Unload a dynamic module by index
+    pub fn unload_dynamic(&mut self, index: usize) -> Result<(), Box<dyn std::error::Error>> {
+        if index >= self.dynamic_modules.len() {
+            return Err("Index out of bounds".into());
+        }
+
+        // Call on_unload before removing
+        self.dynamic_modules[index].borrow_mut().on_unload();
+
+        // Remove from both vectors
+        self.dynamic_modules.remove(index);
+        if index < self.loaded_libs.len() {
+            self.loaded_libs.remove(index);
+        }
+
         Ok(())
+    }
+
+    /// Load all DLLs from a directory
+    pub fn load_plugins_from_folder<P: AsRef<std::path::Path>>(
+        &mut self,
+        folder: P,
+    ) -> Result<usize, Box<dyn std::error::Error>> {
+        let mut loaded_count = 0;
+
+        let entries = std::fs::read_dir(folder)?;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Only load .dll files on Windows
+            if path.extension().and_then(|s| s.to_str()) == Some("dll") {
+                match self.load_dynamic(&path) {
+                    Ok(_) => {
+                        println!("Loaded plugin: {:?}", path);
+                        loaded_count += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load plugin {:?}: {}", path, e);
+                    }
+                }
+            }
+        }
+
+        Ok(loaded_count)
+    }
+
+    /// Reload a dynamic module by index
+    pub fn reload_dynamic(&mut self, index: usize) -> Result<(), Box<dyn std::error::Error>> {
+        if index >= self.loaded_libs.len() {
+            return Err("Index out of bounds".into());
+        }
+
+        // Get the library path (we need to store this)
+        // For now, this is a limitation - we can't reload without knowing the path
+        Err("Reload not yet implemented - path tracking needed".into())
     }
 
     // pub fn reload_module<P: AsRef<Path>>(&mut self, path: P, type_id: TypeId) -> Result<()> {
