@@ -10,17 +10,17 @@ pub fn render_menu_bar(ui: &imgui::Ui, hacks: &mut HaCKS) {
 }
 
 pub fn render_host_window(ui: &imgui::Ui, hacks: &mut HaCKS) {
+    //Main inner window
     ui.window("Hackers Host Window")
         .size([300.0, 100.0], imgui::Condition::FirstUseEver)
-        .build(|| {
-            ui.text("Running on WGPU (DX12/Vulkan)");
-            ui.separator();
-            let io = ui.io();
-            ui.text(format!("FPS: {:.1}", io.framerate));
-            ui.separator();
-            ui.text(format!("Loaded Plugins: {}", hacks.dynamic_modules.len()));
-        });
+        .build(|| {});
+}
 
-    let backend = ImguiBackend::new(ui);
-    hacks.render_window(&backend);
+pub fn about(ui: &imgui::Ui, hacks: &mut HaCKS) {
+    ui.text("Running on WGPU (DX12/Vulkan)");
+    ui.separator();
+    let io = ui.io();
+    ui.text(format!("FPS: {:.1}", io.framerate));
+    ui.separator();
+    ui.text(format!("Loaded Modules: {}", hacks.hacs.len()));
 }

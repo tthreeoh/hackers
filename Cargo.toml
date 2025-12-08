@@ -57,6 +57,7 @@ anyhow = "1.0"
 ron = "0.11.0"
 strum = { version = "0.26", features = ["derive"] }
 abi_stable = "0.11.3"
+copypasta = "0.10"
 
 [features]
 default = ["ui-imgui"]                # Keep imgui as default for backward compat

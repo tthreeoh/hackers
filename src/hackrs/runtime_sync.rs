@@ -2,17 +2,17 @@
 // Runtime Sync System - Define syncs dynamically via scripting
 // ============================================================
 
-use std::any::TypeId;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use std::any::TypeId;
+use std::collections::HashMap;
 
 /// A sync defined via JSON/scripting that operates on module data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScriptedSyncDefinition {
     pub id: String,
-    pub source_module: String,        // Module type name (e.g., "PanicButton")
-    pub target_module: String,        // Module type name (e.g., "Chicken")
+    pub source_module: String, // Module type name (e.g., "PanicButton")
+    pub target_module: String, // Module type name (e.g., "Chicken")
     pub sync_type: SyncType,
     pub mappings: Vec<FieldMapping>,
     #[serde(default)]
@@ -92,12 +92,14 @@ impl RuntimeSync {
 
     /// Check if source or target changed
     fn detect_changes(&mut self, source_json: &JsonValue, target_json: &JsonValue) -> (bool, bool) {
-        let source_changed = self.last_source_state
+        let source_changed = self
+            .last_source_state
             .as_ref()
             .map(|last| last != source_json)
             .unwrap_or(true);
 
-        let target_changed = self.last_target_state
+        let target_changed = self
+            .last_target_state
             .as_ref()
             .map(|last| last != target_json)
             .unwrap_or(true);
@@ -125,7 +127,7 @@ impl RuntimeSync {
                 } else {
                     source_value.clone()
                 };
-                
+
                 // Then apply type conversion
                 let value = self.convert_type(&transformed, &mapping.field_type)?;
 
@@ -137,9 +139,13 @@ impl RuntimeSync {
 
         Ok(true)
     }
-    
+
     /// Convert JSON value to target type
-    fn convert_type(&self, value: &JsonValue, target_type: &FieldType) -> Result<JsonValue, String> {
+    fn convert_type(
+        &self,
+        value: &JsonValue,
+        target_type: &FieldType,
+    ) -> Result<JsonValue, String> {
         match target_type {
             FieldType::Bool => {
                 if let Some(b) = value.as_bool() {
@@ -169,16 +175,19 @@ impl RuntimeSync {
                 if let Some(f) = value.as_f64() {
                     Ok(JsonValue::Number(
                         serde_json::Number::from_f64(f)
-                            .ok_or_else(|| "Invalid float value".to_string())?
+                            .ok_or_else(|| "Invalid float value".to_string())?,
                     ))
                 } else if let Some(i) = value.as_i64() {
                     Ok(JsonValue::Number(
                         serde_json::Number::from_f64(i as f64)
-                            .ok_or_else(|| "Invalid float value".to_string())?
+                            .ok_or_else(|| "Invalid float value".to_string())?,
                     ))
                 } else if let Some(s) = value.as_str() {
                     s.parse::<f64>()
-                        .and_then(|f| serde_json::Number::from_f64(f).ok_or_else(|| s.parse::<f64>().unwrap_err()))
+                        .and_then(|f| {
+                            serde_json::Number::from_f64(f)
+                                .ok_or_else(|| s.parse::<f64>().unwrap_err())
+                        })
                         .map(JsonValue::Number)
                         .map_err(|e| format!("Cannot parse '{}' as float: {}", s, e))
                 } else {
@@ -194,13 +203,16 @@ impl RuntimeSync {
             }
             FieldType::VecString => {
                 if let Some(arr) = value.as_array() {
-                    let strings: Result<Vec<String>, String> = arr.iter()
-                        .map(|v| v.as_str()
-                            .map(|s| s.to_string())
-                            .ok_or_else(|| format!("Array element is not a string: {:?}", v)))
+                    let strings: Result<Vec<String>, String> = arr
+                        .iter()
+                        .map(|v| {
+                            v.as_str()
+                                .map(|s| s.to_string())
+                                .ok_or_else(|| format!("Array element is not a string: {:?}", v))
+                        })
                         .collect();
                     Ok(JsonValue::Array(
-                        strings?.into_iter().map(JsonValue::String).collect()
+                        strings?.into_iter().map(JsonValue::String).collect(),
                     ))
                 } else {
                     Err(format!("Cannot convert {:?} to Vec<String>", value))
@@ -208,12 +220,18 @@ impl RuntimeSync {
             }
             FieldType::VecInt => {
                 if let Some(arr) = value.as_array() {
-                    let ints: Result<Vec<i64>, String> = arr.iter()
-                        .map(|v| v.as_i64()
-                            .ok_or_else(|| format!("Array element is not an int: {:?}", v)))
+                    let ints: Result<Vec<i64>, String> = arr
+                        .iter()
+                        .map(|v| {
+                            v.as_i64()
+                                .ok_or_else(|| format!("Array element is not an int: {:?}", v))
+                        })
                         .collect();
                     Ok(JsonValue::Array(
-                        ints?.into_iter().map(|i| JsonValue::Number(i.into())).collect()
+                        ints?
+                            .into_iter()
+                            .map(|i| JsonValue::Number(i.into()))
+                            .collect(),
                     ))
                 } else {
                     Err(format!("Cannot convert {:?} to Vec<i32>", value))
@@ -221,25 +239,28 @@ impl RuntimeSync {
             }
             FieldType::VecFloat => {
                 if let Some(arr) = value.as_array() {
-                    let floats: Result<Vec<f64>, String> = arr.iter()
-                        .map(|v| v.as_f64()
-                            .ok_or_else(|| format!("Array element is not a float: {:?}", v)))
+                    let floats: Result<Vec<f64>, String> = arr
+                        .iter()
+                        .map(|v| {
+                            v.as_f64()
+                                .ok_or_else(|| format!("Array element is not a float: {:?}", v))
+                        })
                         .collect();
                     let numbers: Result<Vec<serde_json::Number>, String> = floats?
                         .into_iter()
-                        .map(|f| serde_json::Number::from_f64(f)
-                            .ok_or_else(|| "Invalid float value".to_string()))
+                        .map(|f| {
+                            serde_json::Number::from_f64(f)
+                                .ok_or_else(|| "Invalid float value".to_string())
+                        })
                         .collect();
                     Ok(JsonValue::Array(
-                        numbers?.into_iter().map(JsonValue::Number).collect()
+                        numbers?.into_iter().map(JsonValue::Number).collect(),
                     ))
                 } else {
                     Err(format!("Cannot convert {:?} to Vec<f32>", value))
                 }
             }
-            FieldType::Json => {
-                Ok(value.clone())
-            }
+            FieldType::Json => Ok(value.clone()),
         }
     }
 
@@ -250,21 +271,25 @@ impl RuntimeSync {
                     ConditionOperator::Equals => field_value == &condition.value,
                     ConditionOperator::NotEquals => field_value != &condition.value,
                     ConditionOperator::GreaterThan => {
-                        if let (Some(a), Some(b)) = (field_value.as_f64(), condition.value.as_f64()) {
+                        if let (Some(a), Some(b)) = (field_value.as_f64(), condition.value.as_f64())
+                        {
                             a > b
                         } else {
                             false
                         }
                     }
                     ConditionOperator::LessThan => {
-                        if let (Some(a), Some(b)) = (field_value.as_f64(), condition.value.as_f64()) {
+                        if let (Some(a), Some(b)) = (field_value.as_f64(), condition.value.as_f64())
+                        {
                             a < b
                         } else {
                             false
                         }
                     }
                     ConditionOperator::Contains => {
-                        if let (Some(s), Some(needle)) = (field_value.as_str(), condition.value.as_str()) {
+                        if let (Some(s), Some(needle)) =
+                            (field_value.as_str(), condition.value.as_str())
+                        {
                             s.contains(needle)
                         } else {
                             false
@@ -308,26 +333,31 @@ impl RuntimeSyncManager {
 
     /// Register a module type name to TypeId mapping
     pub fn register_module_type<T: crate::HaCK + 'static>(&mut self, name: impl Into<String>) {
-        self.module_name_to_id.insert(name.into(), TypeId::of::<T>());
+        self.module_name_to_id
+            .insert(name.into(), TypeId::of::<T>());
     }
-    
+
     /// Register a module schema
     pub fn register_schema(&mut self, schema: ModuleSchema) {
         self.schema_registry.register_schema(schema);
     }
-    
+
     /// Get available modules
     pub fn list_modules(&self) -> Vec<String> {
         self.schema_registry.list_modules()
     }
-    
+
     /// Get schema for a module
     pub fn get_schema(&self, module_name: &str) -> Option<&ModuleSchema> {
         self.schema_registry.get_schema(module_name)
     }
-    
+
     /// Get compatible field mappings between two modules
-    pub fn get_compatible_fields(&self, source: &str, target: &str) -> Vec<(String, String, FieldType)> {
+    pub fn get_compatible_fields(
+        &self,
+        source: &str,
+        target: &str,
+    ) -> Vec<(String, String, FieldType)> {
         self.schema_registry.get_compatible_fields(source, target)
     }
 
@@ -335,7 +365,7 @@ impl RuntimeSyncManager {
     pub fn add_sync(&mut self, definition: ScriptedSyncDefinition) {
         self.syncs.push(RuntimeSync::new(definition));
     }
-    
+
     /// Remove a sync by ID
     pub fn remove_sync(&mut self, id: &str) -> bool {
         if let Some(pos) = self.syncs.iter().position(|s| s.definition.id == id) {
@@ -345,7 +375,7 @@ impl RuntimeSyncManager {
             false
         }
     }
-    
+
     /// List all registered syncs
     pub fn list_syncs(&self) -> Vec<ScriptedSyncDefinition> {
         self.syncs.iter().map(|s| s.definition.clone()).collect()
@@ -365,11 +395,7 @@ impl RuntimeSyncManager {
 
     pub fn apply_all(&mut self, hacs: &crate::HaCKS) {
         for sync in &mut self.syncs {
-            if let Err(e) = Self::apply_sync_static(
-                sync,
-                hacs,
-                &self.module_name_to_id,
-            ) {
+            if let Err(e) = Self::apply_sync_static(sync, hacs, &self.module_name_to_id) {
                 log::error!("Sync error ({}): {}", sync.definition.id, e);
             }
         }
@@ -388,33 +414,37 @@ impl RuntimeSyncManager {
         let source_id = module_name_to_id
             .get(&sync.definition.source_module)
             .ok_or_else(|| format!("Unknown source module: {}", sync.definition.source_module))?;
-    
+
         let target_id = module_name_to_id
             .get(&sync.definition.target_module)
             .ok_or_else(|| format!("Unknown target module: {}", sync.definition.target_module))?;
-    
+
         // Get JSON representations
         let source_json = {
-            let module_rc = hacs.hacs.get(source_id)
-                .ok_or_else(|| format!("Source module not found: {}", sync.definition.source_module))?;
-            
+            let module_rc = hacs.get_module_by_type_id(*source_id).ok_or_else(|| {
+                format!("Source module not found: {}", sync.definition.source_module)
+            })?;
+
             let module = module_rc.borrow();
-            module.to_json()
+            module
+                .to_json()
                 .map_err(|e| format!("Failed to serialize source: {}", e))?
         };
-    
+
         let mut target_json = {
-            let module_rc = hacs.hacs.get(target_id)
-                .ok_or_else(|| format!("Target module not found: {}", sync.definition.target_module))?;
-            
+            let module_rc = hacs.get_module_by_type_id(*target_id).ok_or_else(|| {
+                format!("Target module not found: {}", sync.definition.target_module)
+            })?;
+
             let module = module_rc.borrow();
-            module.to_json()
+            module
+                .to_json()
                 .map_err(|e| format!("Failed to serialize target: {}", e))?
         };
-    
+
         // Detect changes
         let (source_changed, target_changed) = sync.detect_changes(&source_json, &target_json);
-    
+
         // Apply sync based on type and changes
         let should_sync = match (&sync.definition.sync_type, source_changed, target_changed) {
             (SyncType::OneWay, true, _) => true,
@@ -426,21 +456,21 @@ impl RuntimeSyncManager {
             }
             _ => false,
         };
-    
+
         if should_sync {
             if sync.apply_sync(&source_json, &mut target_json)? {
                 // Update the target module with new JSON
                 Self::update_module_from_json_static(hacs, target_id, &target_json)?;
-                
+
                 // Update tracking
                 sync.last_source_state = Some(source_json);
                 sync.last_target_state = Some(target_json);
             }
         }
-    
+
         Ok(())
     }
-    
+
     #[allow(unused)]
     fn update_module_from_json(
         &self,
@@ -450,7 +480,7 @@ impl RuntimeSyncManager {
     ) -> Result<(), String> {
         Self::update_module_from_json_static(hacs, type_id, json)
     }
-    
+
     fn update_module_from_json_static(
         _hacs: &crate::HaCKS,
         type_id: &TypeId,
@@ -460,11 +490,11 @@ impl RuntimeSyncManager {
         // This requires modules to support from_json or similar
         // For now, we'll just log that we would update it
         log::info!("Would update module {:?} with: {}", type_id, json);
-        
+
         // TODO: Implement actual deserialization
         // This is tricky because we need to deserialize into the concrete type
         // One approach: Add a `update_from_json` method to HaCK trait
-        
+
         Ok(())
     }
 }
@@ -521,7 +551,7 @@ macro_rules! impl_schema {
             }
         }
     };
-    
+
     (@desc $desc:expr) => { Some($desc.to_string()) };
     (@desc) => { None };
 }
@@ -540,19 +570,19 @@ impl SchemaRegistry {
             schemas: HashMap::new(),
         }
     }
-    
+
     pub fn register_schema(&mut self, schema: ModuleSchema) {
         self.schemas.insert(schema.module_name.clone(), schema);
     }
-    
+
     pub fn get_schema(&self, module_name: &str) -> Option<&ModuleSchema> {
         self.schemas.get(module_name)
     }
-    
+
     pub fn list_modules(&self) -> Vec<String> {
         self.schemas.keys().cloned().collect()
     }
-    
+
     /// Get all syncable field pairs between two modules
     pub fn get_compatible_fields(
         &self,
@@ -563,24 +593,24 @@ impl SchemaRegistry {
             Some(s) => s,
             None => return vec![],
         };
-        
+
         let target_schema = match self.get_schema(target) {
             Some(s) => s,
             None => return vec![],
         };
-        
+
         let mut compatible = Vec::new();
-        
+
         for source_field in &source_schema.fields {
             if !source_field.readable {
                 continue;
             }
-            
+
             for target_field in &target_schema.fields {
                 if !target_field.writable {
                     continue;
                 }
-                
+
                 // Allow syncing if types match or are compatible
                 if self.types_compatible(&source_field.field_type, &target_field.field_type) {
                     compatible.push((
@@ -591,10 +621,10 @@ impl SchemaRegistry {
                 }
             }
         }
-        
+
         compatible
     }
-    
+
     fn types_compatible(&self, source: &FieldType, target: &FieldType) -> bool {
         match (source, target) {
             // Exact match

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../shared/shared-styles.css">
+    <script src="../shared/shapes.js"></script>
+    <title>Shapes Library</title>
+    <style>
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .icon-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            transition: transform 0.2s;
+            cursor: pointer;
+            padding: 15px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+        
+        .icon-wrapper:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--border-subtle);
+        }
+        
+        canvas {
+            border-radius: 8px;
+            box-shadow: var(--shadow-md);
+        }
+        
+        .label {
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .download-btn {
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+
+        .filter-section {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .filter-btn {
+            margin: 0 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            border-radius: var(--radius-md);
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            background: var(--rust-orange);
+            border-color: var(--rust-orange);
+            color: white;
+        }
+
+        .stats {
+            text-align: center;
+            margin-bottom: 1rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 Icon Library</h1>
+        <p>Click any icon to download as PNG • All icons are 128x128px with transparent background</p>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="container" id="iconContainer"></div>
+
+    <script>
+        const size = 128;
+
+        // Get all icons from Shapes - both static icons AND fill shapes
+        const allShapes = [
+            ...Shapes.getIcons(),
+            ...Shapes.getFillShapes().map(shape => ({
+                id: shape.id,
+                name: shape.name,
+                color: Shapes.metadata[shape.id]?.color || '#666666',
+                draw: (ctx) => {
+                    // Draw fill shapes at 75% for preview
+                    shape.draw(ctx, 0.75, '#222222', Shapes.metadata[shape.id]?.color || '#ff6600');
+                }
+            }))
+        ];
+
+        function renderIcons() {
+            const container = document.getElementById('iconContainer');
+            container.innerHTML = '';
+            
+            // Update stats
+            document.getElementById('stats').textContent = 
+                `${allShapes.length} icons available`;
+            
+            allShapes.forEach(icon => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'icon-wrapper';
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                // Draw icon
+                icon.draw(ctx);
+                
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.textContent = icon.name;
+                label.style.color = icon.color;
+                
+                const downloadBtn = document.createElement('button');
+                downloadBtn.className = 'download-btn';
+                downloadBtn.textContent = '⬇ Download PNG';
+                
+                downloadBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    canvas.toBlob(blob => {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${icon.id}.png`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    });
+                };
+                
+                wrapper.onclick = () => downloadBtn.click();
+                
+                wrapper.appendChild(canvas);
+                wrapper.appendChild(label);
+                wrapper.appendChild(downloadBtn);
+                container.appendChild(wrapper);
+            });
+        }
+
+        // Initial render
+        renderIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="../shared/shared-styles.css">
+        <script src="../shared/shared.js"></script>
+        <title>Sprite Configuration Documentation</title>
+        <style>
+            /* Page-specific documentation styles */
+            body {
+                background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+                padding: 20px;
+            }
+    
+            .container {
+                background: var(--bg-elevated);
+                border-radius: 12px;
+                box-shadow: var(--shadow-xl);
+                overflow: hidden;
+            }
+    
+            nav {
+                background: var(--bg-secondary);
+                padding: 20px;
+                border-radius: 8px;
+                margin-bottom: 30px;
+            }
+    
+            nav h3 {
+                color: var(--rust-orange-bright);
+                margin-bottom: 15px;
+                font-size: 1.2em;
+            }
+    
+            nav ul {
+                list-style: none;
+            }
+    
+            nav li {
+                margin-bottom: 8px;
+            }
+    
+            nav a {
+                padding: 5px 10px;
+                display: inline-block;
+                border-radius: 4px;
+            }
+    
+            section {
+                margin-bottom: 50px;
+                scroll-margin-top: 20px;
+            }
+    
+            h2 {
+                color: var(--rust-orange-bright);
+                font-size: 2em;
+                margin-bottom: 20px;
+                padding-bottom: 10px;
+                border-bottom: 3px solid var(--rust-orange);
+            }
+    
+            h3 {
+                color: var(--accent-secondary);
+                font-size: 1.5em;
+                margin: 30px 0 15px;
+            }
+    
+            .example {
+                background: var(--bg-secondary);
+                border-left: 4px solid var(--rust-orange);
+                padding: 20px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }
+    
+            .folder-structure {
+                background: var(--bg-primary);
+                color: var(--text-secondary);
+                padding: 20px;
+                border-radius: 8px;
+                font-family: var(--font-mono);
+                font-size: 0.95em;
+                margin: 15px 0;
+                overflow-x: auto;
+                white-space: pre;
+                line-height: 1.5;
+            }
+    
+            .folder-structure .folder {
+                color: var(--accent-cyan);
+            }
+    
+            .folder-structure .file {
+                color: var(--accent-success);
+            }
+    
+            .folder-structure .comment {
+                color: var(--syntax-comment);
+            }
+    
+            .feature-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
+                margin: 20px 0;
+            }
+    
+            .feature-card {
+                background: var(--bg-secondary);
+                padding: 20px;
+                border-radius: 8px;
+                border-top: 4px solid var(--rust-orange);
+            }
+    
+            .feature-card h4 {
+                margin-top: 0;
+                color: var(--rust-orange-bright);
+            }
+    
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+            }
+    
+            th, td {
+                padding: 12px;
+                text-align: left;
+                border-bottom: 1px solid var(--border-color);
+            }
+    
+            th {
+                background: var(--rust-orange);
+                color: white;
+                font-weight: 600;
+            }
+    
+            tr:hover {
+                background: var(--bg-secondary);
+            }
+    
+            .badge {
+                display: inline-block;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 0.85em;
+                font-weight: 600;
+                margin-left: 8px;
+            }
+    
+            .badge-new {
+                background: var(--accent-success);
+                color: white;
+            }
+    
+            .badge-optional {
+                background: var(--accent-warning);
+                color: var(--bg-primary);
+            }
+    
+            .badge-required {
+                background: var(--accent-error);
+                color: white;
+            }
+    
+            .warning {
+                background: rgba(255, 204, 0, 0.1);
+                border-left: 4px solid var(--accent-warning);
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }
+    
+            .tip {
+                background: rgba(90, 200, 250, 0.1);
+                border-left: 4px solid var(--accent-cyan);
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }
+        </style>
+    </head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 Sprite Configuration Guide</h1>
+            <p>Complete guide for configuring animated sprites with sprite.json</p>
+        </header>
+
+        <div class="content">
+            <nav>
+                <h3>📑 Table of Contents</h3>
+                <ul>
+                    <li><a href="#overview">Overview</a></li>
+                    <li><a href="#folder-layouts">Folder Layouts</a></li>
+                    <li><a href="#schema">JSON Schema</a></li>
+                    <li><a href="#examples">Examples</a></li>
+                    <li><a href="#advanced">Advanced Features</a></li>
+                </ul>
+            </nav>
+
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The sprite configuration system supports multiple ways to organize and configure animated sprites. From simple single-file setups to complex modular multi-file configurations.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>📦 Simple Single Files</h4>
+                        <p>Quick setup with one sprite sheet containing all animations</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🎯 Modular Support</h4>
+                        <p>Split animations into separate files per mode</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🎨 Flexible Layouts</h4>
+                        <p>Horizontal strips, vertical strips, or grids</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>⚡ Per-Mode Settings</h4>
+                        <p>Different FPS and speed for each animation mode</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="folder-layouts">
+                <h2>Folder Layouts</h2>
+
+                <h3>Option 1: Modular Files Per Mode <span class="badge badge-new">Recommended</span></h3>
+                <p>Each animation mode gets its own sprite sheet. This makes it easy to add, remove, or update individual animations without affecting others.</p>
+                
+                <div class="folder-structure">
+monsters/
+  <span class="folder">zombie/</span>
+    <span class="file">walk.png</span>          <span class="comment">← 8 frames horizontal strip</span>
+    <span class="file">run.png</span>           <span class="comment">← 8 frames horizontal strip</span>
+    <span class="file">attack1.png</span>       <span class="comment">← 12 frames horizontal strip</span>
+    <span class="file">attack2.png</span>       <span class="comment">← 10 frames horizontal strip</span>
+    <span class="file">death.png</span>         <span class="comment">← 15 frames horizontal strip</span>
+    <span class="file">stand.png</span>         <span class="comment">← 1 frame</span>
+    <span class="file">sprite.json</span>       <span class="comment">← configuration file</span>
+                </div>
+
+                <div class="example">
+                    <h4>sprite.json</h4>
+                    <pre><code>{
+  "default_fps": 15.0,
+  "default_layout": "horizontal",
+  "files": {
+    "walk.png": { "frame_count": 8, "fps": 12.0 },
+    "run.png": { "frame_count": 8, "fps": 18.0 },
+    "attack1.png": { "frame_count": 12, "fps": 24.0 },
+    "attack2.png": { "frame_count": 10, "fps": 20.0 },
+    "death.png": { "frame_count": 15, "fps": 10.0 },
+    "stand.png": { "frame_count": 1 }
+  },
+  "mode_mapping": {
+    "walk": "walk.png",
+    "run": "run.png",
+    "attack1": "attack1.png",
+    "attack2": "attack2.png",
+    "death": "death.png",
+    "stand": "stand.png"
+  }
+}</code></pre>
+                </div>
+
+                <h3>Option 2: Modular with Grid Layouts</h3>
+                <p>Use grid layouts when you have more frames that don't fit well in a single row.</p>
+                
+                <div class="folder-structure">
+monsters/
+  <span class="folder">gloam/</span>
+    <span class="file">walk.png</span>          <span class="comment">← 16 frames in 4x4 grid</span>
+    <span class="file">attack.png</span>        <span class="comment">← 12 frames in 4x3 grid</span>
+    <span class="file">sprite.json</span>
+                </div>
+
+                <div class="example">
+                    <h4>sprite.json</h4>
+                    <pre><code>{
+  "default_fps": 15.0,
+  "files": {
+    "walk.png": {
+      "frame_count": 16,
+      "fps": 12.0,
+      "layout": "grid",
+      "grid_columns": 4
+    },
+    "attack.png": {
+      "frame_count": 12,
+      "fps": 20.0,
+      "layout": "grid",
+      "grid_columns": 4
+    }
+  },
+  "mode_mapping": {
+    "walk": "walk.png",
+    "attack1": "attack.png"
+  }
+}</code></pre>
+                </div>
+
+                <h3>Option 3: All-in-One Sprite Sheet</h3>
+                <p>All animation modes combined in one large sprite sheet. The system cycles through all 64 frames regardless of which animation mode is active. Good for simple sprites where all animations share the same frame count and timing.</p>
+                
+                <div class="folder-structure">
+monsters/
+  <span class="folder">chucky/</span>
+    <span class="file">sheet.png</span>         <span class="comment">← All 64 frames (all modes) in 8x8 grid</span>
+    <span class="file">sprite.json</span>
+                </div>
+
+                <div class="example">
+                    <h4>sprite.json</h4>
+                    <pre><code>{
+  "frame_count": 64,
+  "fps": 15.0,
+  "layout": "grid",
+  "grid_columns": 8
+}</code></pre>
+                    <p><strong>Note:</strong> With this setup, the same 64-frame cycle plays for walk, run, attack, etc. It does NOT separate modes - all modes show the same animation sequence.</p>
+                </div>
+
+                <h3>Option 4: DC6 Game Files</h3>
+                <p>Native Diablo II sprite format. No sprite.json needed - frame count is read from the file header.</p>
+                
+                <div class="folder-structure">
+monsters/
+  <span class="file">zombie.dc6</span>          <span class="comment">← Binary DC6 file with all frames</span>
+                </div>
+
+                <h3>Option 5: Individual Frame Files</h3>
+                <p>For maximum flexibility, each frame can be a separate file.</p>
+                
+                <div class="folder-structure">
+monsters/
+  <span class="folder">imp/</span>
+    <span class="file">0.png</span>
+    <span class="file">1.png</span>
+    <span class="file">2.png</span>
+    <span class="file">3.png</span>
+    ...
+    <span class="file">sprite.json</span>       <span class="comment">← optional, for FPS settings</span>
+                </div>
+
+                <div class="example">
+                    <h4>sprite.json (optional)</h4>
+                    <pre><code>{
+  "fps": 12.0,
+  "speed": 1.5
+}</code></pre>
+                </div>
+            </section>
+
+            <section id="schema">
+                <h2>JSON Schema Reference</h2>
+
+                <h3>Top-Level Fields</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>default_fps</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>number</td>
+                            <td>Default frames per second for all animations</td>
+                        </tr>
+                        <tr>
+                            <td><code>default_speed</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>number</td>
+                            <td>Default speed multiplier (1.0 = normal, 2.0 = 2x speed)</td>
+                        </tr>
+                        <tr>
+                            <td><code>default_layout</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>string</td>
+                            <td>"horizontal", "vertical", or "grid"</td>
+                        </tr>
+                        <tr>
+                            <td><code>files</code> <span class="badge badge-new">New</span></td>
+                            <td>object</td>
+                            <td>Map of filename to file configuration (enables modular mode)</td>
+                        </tr>
+                        <tr>
+                            <td><code>mode_mapping</code> <span class="badge badge-new">New</span></td>
+                            <td>object</td>
+                            <td>Maps animation mode names to filenames</td>
+                        </tr>
+                        <tr>
+                            <td><code>frame_count</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>integer</td>
+                            <td>Total frames (single-file mode, auto-detected if omitted)</td>
+                        </tr>
+                        <tr>
+                            <td><code>fps</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>number</td>
+                            <td>Frames per second (single-file mode)</td>
+                        </tr>
+                        <tr>
+                            <td><code>speed</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>number</td>
+                            <td>Speed multiplier (single-file mode)</td>
+                        </tr>
+                        <tr>
+                            <td><code>layout</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>string</td>
+                            <td>"horizontal", "vertical", or "grid" (single-file mode)</td>
+                        </tr>
+                        <tr>
+                            <td><code>grid_columns</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>integer</td>
+                            <td>Number of columns in grid layout</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>File Configuration Object</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>frame_count</code></td>
+                            <td>integer</td>
+                            <td>Number of frames in this file</td>
+                        </tr>
+                        <tr>
+                            <td><code>fps</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>number</td>
+                            <td>Frames per second (overrides default_fps)</td>
+                        </tr>
+                        <tr>
+                            <td><code>speed</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>number</td>
+                            <td>Speed multiplier (overrides default_speed)</td>
+                        </tr>
+                        <tr>
+                            <td><code>layout</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>string</td>
+                            <td>"horizontal", "vertical", or "grid"</td>
+                        </tr>
+                        <tr>
+                            <td><code>grid_columns</code> <span class="badge badge-optional">Optional</span></td>
+                            <td>integer</td>
+                            <td>Columns in grid (required if layout is "grid")</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Animation Modes</h3>
+                <p>Supported animation mode names for <code>mode_mapping</code>:</p>
+                <ul style="columns: 3; margin: 20px 0;">
+                    <li><code>death</code></li>
+                    <li><code>stand</code></li>
+                    <li><code>walk</code></li>
+                    <li><code>beinghit</code></li>
+                    <li><code>attack1</code></li>
+                    <li><code>attack2</code></li>
+                    <li><code>block</code></li>
+                    <li><code>cast</code></li>
+                    <li><code>useskill1</code></li>
+                    <li><code>useskill2</code></li>
+                    <li><code>useskill3</code></li>
+                    <li><code>useskill4</code></li>
+                    <li><code>dead</code></li>
+                    <li><code>beingknockback</code></li>
+                    <li><code>sequence</code></li>
+                    <li><code>run</code></li>
+                </ul>
+            </section>
+
+            <section id="examples">
+                <h2>Complete Examples</h2>
+
+                <h3>Example 1: Simple Sprite with Speed Boost</h3>
+                <div class="example">
+                    <pre><code>{
+  "frame_count": 8,
+  "fps": 12.0,
+  "speed": 1.5,
+  "layout": "horizontal"
+}</code></pre>
+                    <p><strong>Result:</strong> 8-frame horizontal animation playing at 12 FPS, 50% faster than normal</p>
+                </div>
+
+                <h3>Example 2: Grid Layout with High Frame Count</h3>
+                <div class="example">
+                    <pre><code>{
+  "frame_count": 64,
+  "fps": 30,
+  "speed": 5.0,
+  "layout": "grid",
+  "grid_columns": 8
+}</code></pre>
+                    <p><strong>Result:</strong> 64 frames in 8x8 grid, playing at 30 FPS, 5x faster speed</p>
+                </div>
+
+                <h3>Example 3: Minimal Config (Auto-Detection)</h3>
+                <div class="example">
+                    <pre><code>{
+  "fps": 15.0
+}</code></pre>
+                    <p><strong>Result:</strong> Frame count auto-detected, horizontal layout assumed, 15 FPS</p>
+                </div>
+
+                <h3>Example 4: Modular with Convention-Based Mapping</h3>
+                <div class="example">
+                    <pre><code>{
+  "default_fps": 15.0,
+  "files": {
+    "walk.png": { "frame_count": 8 },
+    "run.png": { "frame_count": 8 },
+    "attack1.png": { "frame_count": 12 }
+  }
+}</code></pre>
+                    <p><strong>Result:</strong> No explicit mode_mapping needed - "walk" mode automatically uses "walk.png"</p>
+                </div>
+
+                <h3>Example 5: Advanced with Per-Mode Overrides</h3>
+                <div class="example">
+                    <pre><code>{
+  "default_fps": 15.0,
+  "default_speed": 1.0,
+  "default_layout": "horizontal",
+  
+  "files": {
+    "idle.png": {
+      "frame_count": 4,
+      "fps": 8.0
+    },
+    "walk.png": {
+      "frame_count": 8,
+      "fps": 12.0
+    },
+    "run.png": {
+      "frame_count": 8,
+      "fps": 18.0,
+      "speed": 1.5
+    },
+    "attack_combo.png": {
+      "frame_count": 24,
+      "fps": 24.0,
+      "speed": 1.3,
+      "layout": "grid",
+      "grid_columns": 6
+    }
+  },
+  
+  "mode_mapping": {
+    "stand": "idle.png",
+    "walk": "walk.png",
+    "run": "run.png",
+    "attack1": "attack_combo.png",
+    "attack2": "attack_combo.png"
+  }
+}</code></pre>
+                    <p><strong>Result:</strong> Multiple modes, different settings per file, same file can be reused for multiple modes</p>
+                </div>
+            </section>
+
+            <section id="advanced">
+                <h2>Advanced Features</h2>
+
+                <h3>Priority System</h3>
+                <p>When loading sprites, the system uses this priority order:</p>
+                <ol>
+                    <li><strong>File-specific settings</strong> - Defined in <code>files[filename]</code></li>
+                    <li><strong>Default settings</strong> - <code>default_fps</code>, <code>default_speed</code>, etc.</li>
+                    <li><strong>Direct settings</strong> - Top-level <code>fps</code>, <code>speed</code>, etc.</li>
+                    <li><strong>Hardcoded defaults</strong> - 1.0 for speed, various FPS based on context</li>
+                </ol>
+
+                <h3>User Override System</h3>
+                <div class="tip">
+                    <strong>💡 Tip:</strong> Users can override default sprites by placing their custom folders in a custom path. Custom paths are checked first, then default paths, so user files take priority!
+                </div>
+
+                <h3>Convention-Based Fallback</h3>
+                <p>If <code>mode_mapping</code> is not provided, the system tries to match by convention:</p>
+                <ul>
+                    <li><code>walk</code> mode → looks for <code>walk.png</code></li>
+                    <li><code>run</code> mode → looks for <code>run.png</code></li>
+                    <li><code>attack1</code> mode → looks for <code>attack1.png</code></li>
+                </ul>
+
+                <div class="warning">
+                    <strong>⚠️ Warning:</strong> Grid columns must be specified when using <code>"layout": "grid"</code>. The system cannot auto-detect grid dimensions.
+                </div>
+
+                <h3>Speed vs FPS</h3>
+                <p>Understanding the difference:</p>
+                <ul>
+                    <li><strong>FPS:</strong> How many frames to display per second (visual smoothness)</li>
+                    <li><strong>Speed:</strong> Multiplier for how fast to advance through frames (animation tempo)</li>
+                </ul>
+                <p><strong>Example:</strong> <code>fps: 30</code> + <code>speed: 2.0</code> = Display updates 30 times per second, but advance through 60 frames worth of animation per second</p>
+            </section>
+        </div>
+
+        <footer>
+            <p>Sprite Configuration System v2.0 | Modular Animation Support</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,18 +1,18 @@
+use super::access::{AccessLevel, AccessToken};
+use crate::{HaCK, HaCKS};
 use std::any::TypeId;
 use std::cell::{Ref, RefMut};
-use crate::{HaCK, HaCKS};
-use super::access::{AccessLevel, AccessToken};
 
 impl HaCKS {
     /// Try to get immutable access to a module
     pub fn try_access<T: HaCK + 'static>(&self, requester: TypeId) -> Option<Ref<'_, T>> {
         let target_id = TypeId::of::<T>();
-        
+
         // Get the module to check its ACL
-        let module_rc = self.hacs.get(&target_id)?;
+        let module_rc = self.get_module_by_type_id(target_id)?;
         let module = module_rc.borrow();
         let acl = module.metadata().access_control();
-        
+
         // Check access (borrow access_manager through RefCell)
         let access_granted = self.access_manager.borrow().check_access(
             target_id,
@@ -20,13 +20,13 @@ impl HaCKS {
             AccessLevel::ReadOnly,
             acl,
         );
-        
+
         if !access_granted {
             return None;
         }
-        
+
         drop(module); // Release borrow
-        
+
         // Return the reference
         self.get_module::<T>()
     }
@@ -34,12 +34,12 @@ impl HaCKS {
     /// Try to get mutable access to a module
     pub fn try_access_mut<T: HaCK + 'static>(&self, requester: TypeId) -> Option<RefMut<'_, T>> {
         let target_id = TypeId::of::<T>();
-        
+
         // Get the module to check its ACL
-        let module_rc = self.hacs.get(&target_id)?;
+        let module_rc = self.get_module_by_type_id(target_id)?;
         let module = module_rc.borrow();
         let acl = module.metadata().access_control();
-        
+
         // Check access (borrow access_manager through RefCell)
         let access_granted = self.access_manager.borrow().check_access(
             target_id,
@@ -47,13 +47,13 @@ impl HaCKS {
             AccessLevel::ReadWrite,
             acl,
         );
-        
+
         if !access_granted {
             return None;
         }
-        
+
         drop(module); // Release borrow
-        
+
         // Return the mutable reference
         self.get_module_mut::<T>()
     }
@@ -65,11 +65,15 @@ impl HaCKS {
         level: AccessLevel,
     ) -> Option<AccessToken> {
         let target_id = TypeId::of::<T>();
-        let module_rc = self.hacs.get(&target_id)?;
+        let module_rc = self.get_module_by_type_id(target_id)?;
         let module = module_rc.borrow();
         let acl = module.metadata().access_control();
-        
-        if self.access_manager.borrow().check_access(target_id, requester, level, acl) {
+
+        if self
+            .access_manager
+            .borrow()
+            .check_access(target_id, requester, level, acl)
+        {
             Some(AccessToken {
                 requester,
                 target: target_id,
@@ -81,11 +85,7 @@ impl HaCKS {
     }
 
     /// Execute a function with access to another module (immutable)
-    pub fn with_access<T, R, F>(
-        &self,
-        requester: TypeId,
-        f: F,
-    ) -> Option<R>
+    pub fn with_access<T, R, F>(&self, requester: TypeId, f: F) -> Option<R>
     where
         T: HaCK + 'static,
         F: FnOnce(&T) -> R,
@@ -94,11 +94,7 @@ impl HaCKS {
     }
 
     /// Execute a function with mutable access to another module
-    pub fn with_access_mut<T, R, F>(
-        &self,
-        requester: TypeId,
-        f: F,
-    ) -> Option<R>
+    pub fn with_access_mut<T, R, F>(&self, requester: TypeId, f: F) -> Option<R>
     where
         T: HaCK + 'static,
         F: FnOnce(&mut T) -> R,

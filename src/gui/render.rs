@@ -1,6 +1,6 @@
 use crate::{
     gui::{DrawList, UiBackend, WinCondition, WindowOptions},
-    HaCKS,
+    HaCK, HaCKS,
 };
 use std::{
     any::TypeId,
@@ -8,25 +8,11 @@ use std::{
 };
 
 impl HaCKS {
-    // fn dock_btn_txt(&mut self, ui: &imgui::Ui) {
-    //     let windowed =  format!("{}",{
-    //         if self.metadata_window {
-    //             "Dock"
-    //         } else {
-    //             "Undock"
-    //         }
-    //     }
-    //     );
-    //     if ui.button(windowed){
-    //         self.metadata_window =!self.metadata_window;
-    //     }
-    // }
-
     fn render_group_window(
         &mut self,
         ui: &dyn UiBackend,
         name: &str,
-        entries: &[(Vec<String>, TypeId)],
+        entries: &[(Vec<String>, String)],
         path: &[String],
     ) {
         let mut show = true;
@@ -37,11 +23,6 @@ impl HaCKS {
             .with_always_auto_resize(true);
 
         if let Some(_token) = ui.begin_window_simple(name, &mut show, &options) {
-            // Add dock button
-            // if ui.button("Dock##dock_grp") {
-            //     self.windowed_groups.insert(path.to_vec(), false);
-            // }
-            // ui.separator();
             self.render_grouped_entries_in_window(ui, entries, 1, path);
         }
 
@@ -53,35 +34,36 @@ impl HaCKS {
     fn render_grouped_entries_in_window(
         &mut self,
         ui: &dyn UiBackend,
-        entries: &[(Vec<String>, TypeId)],
+        entries: &[(Vec<String>, String)],
         depth: usize,
         current_path: &[String],
     ) {
-        let mut groups: BTreeMap<Option<String>, Vec<(Vec<String>, TypeId)>> = BTreeMap::new();
+        let mut groups: BTreeMap<Option<String>, Vec<(Vec<String>, String)>> = BTreeMap::new();
 
-        for (path, type_id) in entries {
+        for (path, name_key) in entries {
             if depth >= path.len() {
                 groups
                     .entry(None)
                     .or_default()
-                    .push((path.clone(), *type_id));
+                    .push((path.clone(), name_key.clone()));
             } else {
                 let submenu_name = path[depth].clone();
                 groups
                     .entry(Some(submenu_name))
                     .or_default()
-                    .push((path.clone(), *type_id));
+                    .push((path.clone(), name_key.clone()));
             }
         }
 
         // Render modules that end at this level
         if let Some(terminal_entries) = groups.remove(&None) {
-            for (_path, type_id) in terminal_entries {
-                if let Some(module_rc) = self.hacs.get(&type_id) {
+            for (_path, name_key) in terminal_entries {
+                if let Some(module_rc) = self.hacs.get(&name_key) {
                     // Mutable borrow for actions
                     let mut module = module_rc.borrow_mut();
                     if module.is_menu_enabled() && !module.is_window_enabled() {
                         let name = module.name().to_string();
+                        let type_id = module.nac_type_id();
 
                         if let Some(_menu) = ui.begin_menu(&name) {
                             module.render_menu(ui); // render_menu can be called on mutable borrow if it mutates state
@@ -154,25 +136,12 @@ impl HaCKS {
         }
 
         *self.menu_cache.borrow_mut() = Some(cache);
-
-        // Render dynamic modules
-        for module_rc in &self.dynamic_modules {
-            let mut module = module_rc.borrow_mut();
-            // Cast to trait object to access HaCK methods
-            let hack: &mut dyn crate::HaCK = &mut *module;
-            if hack.is_menu_enabled() {
-                let name = hack.name().to_string();
-                if let Some(_menu) = ui.begin_menu(&name) {
-                    hack.render_menu(ui);
-                }
-            }
-        }
     }
 
     fn render_grouped_entries_tracked(
         &mut self,
         ui: &dyn UiBackend,
-        entries: &[(Vec<String>, TypeId)],
+        entries: &[(Vec<String>, String)],
         depth: usize,
         current_path: &[String],
         tracking_enabled: bool,
@@ -195,11 +164,12 @@ impl HaCKS {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        for (path, type_id) in sorted_entries {
+        for (path, name_key) in sorted_entries {
             if depth >= path.len() {
-                if let Some(module_rc) = self.hacs.get(&type_id) {
+                if let Some(module_rc) = self.hacs.get(&name_key) {
                     let mut module = module_rc.borrow_mut();
                     if module.is_menu_enabled() && !module.is_window_enabled() {
+                        let type_id = module.nac_type_id();
                         if tracking_enabled {
                             if let Some(tracker) =
                                 self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
@@ -264,18 +234,32 @@ impl HaCKS {
     }
 
     pub fn render_window(&mut self, ui: &dyn UiBackend) {
-        let type_ids: Vec<_> = self.hacs.keys().copied().collect();
-        let sorted: Vec<TypeId> = self
-            .sort_by_weight(type_ids, |m| m.borrow().window_weight())
-            .clone();
+        let keys: Vec<_> = self.hacs.keys().cloned().collect();
+        // Simple sort by window weight
+        let mut sorted = keys;
+        sorted.sort_by(|a, b| {
+            let wa = self
+                .hacs
+                .get(a)
+                .map(|m| m.borrow().window_weight())
+                .unwrap_or(0.0);
+            let wb = self
+                .hacs
+                .get(b)
+                .map(|m| m.borrow().window_weight())
+                .unwrap_or(0.0);
+            wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         let scale = ui.current_font_size() / 14.0;
         let tracking_enabled = self.state_tracker.borrow().enabled;
 
-        for type_id in sorted {
-            if let Some(module_rc) = self.hacs.get(&type_id) {
+        for name_key in sorted {
+            if let Some(module_rc) = self.hacs.get(&name_key) {
                 let mut module = module_rc.borrow_mut();
                 let mut show = module.is_window_enabled();
                 let name = module.name().to_string();
+                let type_id = module.nac_type_id();
 
                 if show {
                     let metadata = module.metadata();
@@ -343,16 +327,32 @@ impl HaCKS {
         self.triggered_hotkeys.borrow_mut().clear();
         *self.triggered_hotkeys.borrow_mut() = self.hotkey_manager.borrow_mut().poll_all(ui);
 
-        let mut render_tree: HashMap<Vec<String>, Vec<TypeId>> = HashMap::new();
-        let mut independent: Vec<TypeId> = Vec::new();
+        let mut render_tree: HashMap<Vec<String>, Vec<String>> = HashMap::new();
+        let mut independent: Vec<String> = Vec::new(); // Store Keys (Strings)
         let tracking_enabled = self.state_tracker.borrow().enabled;
 
-        let type_ids: Vec<_> = self.hacs.keys().copied().collect();
-        let sorted = self.sort_by_weight(type_ids, |m_rc| m_rc.borrow().draw_weight());
+        let keys: Vec<_> = self.hacs.keys().cloned().collect();
 
-        for type_id in &sorted {
-            if let Some(module_rc) = self.hacs.get(type_id) {
+        let mut sorted = keys;
+        sorted.sort_by(|a, b| {
+            let wa = self
+                .hacs
+                .get(a)
+                .map(|m| m.borrow().draw_weight())
+                .unwrap_or(0.0);
+            let wb = self
+                .hacs
+                .get(b)
+                .map(|m| m.borrow().draw_weight())
+                .unwrap_or(0.0);
+            wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        for name_key in &sorted {
+            if let Some(module_rc) = self.hacs.get(name_key) {
                 let module = module_rc.borrow();
+                let type_id = module.nac_type_id();
+
                 if !module.is_render_enabled() {
                     continue;
                 }
@@ -365,25 +365,21 @@ impl HaCKS {
 
                 let path = module.render_draw_path();
                 if path.is_empty() {
-                    independent.push(*type_id);
+                    independent.push(name_key.clone());
                 } else {
                     let path: Vec<String> = path.iter().map(|s| s.to_string()).collect();
                     render_tree
                         .entry(path)
                         .or_insert_with(Vec::new)
-                        .push(*type_id);
+                        .push(name_key.clone());
                 }
             }
         }
 
-        // Wrap DrawListMut in ImguiDrawList to convert to trait objects
-        // use crate::gui::imgui_backend::ImguiDrawList;
-        // let mut fg_wrapper = ImguiDrawList { list: draw_list_fg };
-        // let mut bg_wrapper = ImguiDrawList { list: draw_list_bg };
-
-        for type_id in independent {
-            if let Some(module_rc) = self.hacs.get(&type_id) {
+        for name_key in independent {
+            if let Some(module_rc) = self.hacs.get(&name_key) {
                 let mut module = module_rc.borrow_mut();
+                let type_id = module.nac_type_id();
 
                 if tracking_enabled {
                     if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
@@ -403,10 +399,11 @@ impl HaCKS {
             }
         }
 
-        for (_path, type_ids) in render_tree {
-            for type_id in type_ids {
-                if let Some(module_rc) = self.hacs.get(&type_id) {
+        for (_path, name_keys) in render_tree {
+            for name_key in name_keys {
+                if let Some(module_rc) = self.hacs.get(&name_key) {
                     let mut module = module_rc.borrow_mut();
+                    let type_id = module.nac_type_id();
 
                     if tracking_enabled {
                         if let Some(tracker) =

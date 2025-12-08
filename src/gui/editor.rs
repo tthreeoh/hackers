@@ -24,21 +24,14 @@ impl HaCKS {
             ui.text_colored([1.0, 1.0, 0.0, 1.0], "Module Inspector");
             ui.separator();
 
-            // --- First pass: collect (name, type_id) without borrowing modules later ---
-            let mut module_list: Vec<(String, TypeId)> = self
-                .hacs
-                .iter()
-                .map(|(id, m_rc)| {
-                    let m = m_rc.borrow();
-                    (m.name().to_string(), *id)
-                })
-                .collect();
+            // --- First pass: collect (name, key) ---
+            let mut module_list: Vec<String> = self.hacs.keys().cloned().collect();
 
-            module_list.sort_by(|a, b| a.0.cmp(&b.0));
+            module_list.sort();
 
             // --- Second pass: borrow modules one-by-one safely ---
-            for (name, type_id) in module_list {
-                let module_rc = self.hacs.get(&type_id).unwrap();
+            for name in module_list {
+                let module_rc = self.hacs.get(&name).unwrap();
                 let module = module_rc.borrow(); // immutable borrow
 
                 if ui.collapsing_header(&name, TreeNodeFlags::EMPTY) {
@@ -91,7 +84,7 @@ impl HaCKS {
                         }
                     }
 
-                    ui.text_colored([0.6, 0.6, 0.6, 1.0], &format!("TypeId: {:?}", type_id));
+                    ui.text_colored([0.6, 0.6, 0.6, 1.0], &format!("ID: {:?}", name));
 
                     ui.unindent();
                     ui.separator();
@@ -127,7 +120,8 @@ impl HaCKS {
         let mut show_metadata = *self.metadata_window.borrow();
         if show_metadata {
             let options = WindowOptions::new()
-                .with_position([80.0 * scale, 400.0], WinCondition::FirstUseEver)
+                .with_position([100.0 * scale, 100.0 * scale], WinCondition::FirstUseEver)
+                // .with_size([100.0 * scale, 100.0 * scale], WinCondition::FirstUseEver)
                 .with_always_auto_resize(true);
 
             if let Some(_token) =
@@ -186,7 +180,7 @@ impl HaCKS {
         }
 
         // --- Legend ---
-        if ui.collapsing_header("Legend", TreeNodeFlags::EMPTY) {
+        if ui.collapsing_header("Legend", TreeNodeFlags::DEFAULT_OPEN) {
             ui.text_colored([0.5, 0.5, 1.0, 1.0], "Higher weight = runs/renders first");
             ui.text_colored(
                 [1.0, 1.0, 0.5, 1.0],
@@ -200,25 +194,18 @@ impl HaCKS {
         }
 
         // --- Collect module list (immutable borrow) ---
-        let mut module_list: Vec<(String, TypeId)> = self
-            .hacs
-            .iter()
-            .map(|(id, m_rc)| {
-                let m = m_rc.borrow();
-                (m.name().to_string(), *id)
-            })
-            .collect();
-        module_list.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut module_list: Vec<String> = self.hacs.keys().cloned().collect();
+        module_list.sort();
 
         // --- Iterate modules ---
-        for (idx, (name, type_id)) in module_list.iter().enumerate() {
+        for (idx, name) in module_list.iter().enumerate() {
             // --- Mutable borrow block ---
             {
-                let module_rc = self.hacs.get(type_id).unwrap();
+                let module_rc = self.hacs.get(name).unwrap();
                 let mut module = module_rc.borrow_mut();
                 let id_token = ui.push_id_usize(idx);
 
-                if ui.collapsing_header(&name, TreeNodeFlags::EMPTY) {
+                if ui.collapsing_header(name, TreeNodeFlags::EMPTY) {
                     ui.indent();
                     ui.columns(2, "metadata", true);
                     ui.set_column_width(0, 150.0);
@@ -328,9 +315,10 @@ impl HaCKS {
                         let hotkeys_modified =
                             module.metadata_mut().render_hotkey_config_simple(ui);
                         if hotkeys_modified {
-                            self.hotkey_manager
-                                .borrow_mut()
-                                .sync_from_bindings(*type_id, &module.metadata().hotkeys);
+                            self.hotkey_manager.borrow_mut().sync_from_bindings(
+                                module.nac_type_id(),
+                                &module.metadata().hotkeys,
+                            );
                         }
                         ui.unindent();
                     }
@@ -343,20 +331,14 @@ impl HaCKS {
 
             // --- Immutable borrow block for dependencies ---
             {
-                let deps = self
-                    .hacs
-                    .get(type_id)
-                    .unwrap()
-                    .borrow()
-                    .update_dependencies();
+                let deps = self.hacs.get(name).unwrap().borrow().update_dependencies();
                 if !deps.is_empty() {
                     ui.text_colored([0.7, 0.7, 0.7, 1.0], "Dependencies:");
                     ui.same_line();
                     let dep_names: Vec<String> = deps
                         .iter()
                         .filter_map(|id| {
-                            self.hacs
-                                .get(id)
+                            self.get_module_by_type_id(*id)
                                 .map(|m_rc| m_rc.borrow().name().to_string())
                         })
                         .collect();
@@ -420,9 +402,9 @@ impl HaCKS {
 
         ui.separator();
 
-        let mut sorted_modules: Vec<(String, f32, TypeId)> = Vec::new();
+        let mut sorted_modules: Vec<(String, f32, String)> = Vec::new();
 
-        for (id, module_rc) in self.hacs.iter() {
+        for (name_key, module_rc) in self.hacs.iter() {
             let module = module_rc.borrow(); // immutable borrow for reading weights
             let (weight, enabled) = match *self.viz_mode.borrow() {
                 0 => (module.menu_weight(), module.is_menu_enabled()),
@@ -434,7 +416,7 @@ impl HaCKS {
             sorted_modules.push((
                 module.name().to_string(),
                 if enabled { weight } else { -1.0 },
-                *id,
+                name_key.clone(),
             ));
         }
 
@@ -540,21 +522,13 @@ impl HaCKS {
         if ui.collapsing_header("Module Windows", TreeNodeFlags::EMPTY) {
             ui.text("Modules: Check to undock");
 
-            // 1. Immutable borrow: collect names + TypeIds
-            let mut module_list: Vec<(String, TypeId)> = self
-                .hacs
-                .iter()
-                .map(|(id, m_rc)| {
-                    let m = m_rc.borrow();
-                    (m.name().to_string(), *id)
-                })
-                .collect();
-
-            module_list.sort_by(|a, b| a.0.cmp(&b.0));
+            // 1. Immutable borrow: collect names
+            let mut module_list: Vec<String> = self.hacs.keys().cloned().collect();
+            module_list.sort();
 
             // 2. Now it's safe to mut-borrow individual entries
-            for (name, type_id) in module_list {
-                if let Some(module_rc) = self.hacs.get(&type_id) {
+            for name in module_list {
+                if let Some(module_rc) = self.hacs.get(&name) {
                     let mut module = module_rc.borrow_mut();
 
                     let mut checked = module.is_window_enabled();

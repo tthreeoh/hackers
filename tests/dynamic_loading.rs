@@ -20,10 +20,10 @@ fn test_dynamic_loading() {
         .load_dynamic(&dll_path)
         .expect("Failed to load dynamic module");
 
-    // Verify it's loaded
+    // Verify it's loaded in the registry
     assert!(
-        !hacks.loaded_libs.is_empty(),
-        "loaded_libs should not be empty"
+        !hacks.hacs.is_empty(),
+        "hacs should not be empty after loading dynamic module"
     );
 
     // Verify registry

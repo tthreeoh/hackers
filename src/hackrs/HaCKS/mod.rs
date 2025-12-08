@@ -32,7 +32,7 @@ pub struct HaCKS {
     // Event bus needs RefCell for interior mutability
     pub event_bus: RefCell<Vec<HaCSEvent>>,
 
-    pub hacs: HashMap<TypeId, Rc<RefCell<dyn HaCK>>>,
+    pub hacs: HashMap<String, Rc<RefCell<dyn HaCK>>>,
     pub init_data: HashMap<TypeId, Box<dyn Any + Send>>,
 
     // These need RefCell if modified during &self methods
@@ -53,9 +53,7 @@ pub struct HaCKS {
     pub sync_registry: RefCell<Option<SyncRegistry>>,
     pub runtime_sync_manager: RefCell<Option<RuntimeSyncManager>>,
     pub state_tracker: RefCell<GlobalStateTracker>,
-
-    pub loaded_libs: Vec<DynamicHaC>,
-    pub dynamic_modules: Vec<Rc<RefCell<crate::hackrs::stable_abi::ForeignHaCK>>>,
+    pub loaded_libs: RefCell<HashMap<String, DynamicHaC>>,
 }
 
 #[allow(unused)]
@@ -79,8 +77,7 @@ impl HaCKS {
             sync_registry: RefCell::new(None),
             runtime_sync_manager: RefCell::new(None),
             state_tracker: RefCell::new(GlobalStateTracker::new()),
-            loaded_libs: Vec::new(),
-            dynamic_modules: Vec::new(),
+            loaded_libs: RefCell::new(HashMap::new()),
         }
     }
 
@@ -150,23 +147,29 @@ impl HaCKS {
 
     pub fn get_module<T: HaCK + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
         let type_id = std::any::TypeId::of::<T>();
-        self.hacs.get(&type_id).map(|rc| {
-            std::cell::Ref::map(rc.borrow(), |m| {
-                m.as_any()
-                    .downcast_ref::<T>()
-                    .expect("TypeId matched but downcast failed")
-            })
+        self.hacs.values().find_map(|rc| {
+            let borrow = rc.borrow();
+            if borrow.nac_type_id() == type_id {
+                Some(std::cell::Ref::map(borrow, |m| {
+                    m.as_any().downcast_ref::<T>().unwrap()
+                }))
+            } else {
+                None
+            }
         })
     }
 
     pub fn get_module_mut<T: HaCK + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
         let type_id = std::any::TypeId::of::<T>();
-        self.hacs.get(&type_id).map(|rc| {
-            std::cell::RefMut::map(rc.borrow_mut(), |m| {
-                m.as_any_mut()
-                    .downcast_mut::<T>()
-                    .expect("TypeId matched but downcast failed")
-            })
+        self.hacs.values().find_map(|rc| {
+            let is_match = rc.borrow().nac_type_id() == type_id;
+            if is_match {
+                Some(std::cell::RefMut::map(rc.borrow_mut(), |m| {
+                    m.as_any_mut().downcast_mut::<T>().unwrap()
+                }))
+            } else {
+                None
+            }
         })
     }
 
@@ -179,6 +182,14 @@ impl HaCKS {
         if let Some(mut m) = self.get_module_mut::<T>() {
             f(&mut *m);
         }
+    }
+
+    /// Helper to find a module by TypeId (O(N) search)
+    pub fn get_module_by_type_id(&self, type_id: TypeId) -> Option<Rc<RefCell<dyn HaCK>>> {
+        self.hacs
+            .values()
+            .find(|rc| rc.borrow().nac_type_id() == type_id)
+            .cloned()
     }
 }
 

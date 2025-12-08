@@ -1,12 +1,14 @@
 use crate::access::{AccessControl, AccessLevel};
 use crate::gui::UiBackend;
+use crate::gui::{DrawList, Vec2};
 use crate::hackrs::HaCMetadata;
-use crate::HaCK;
+use crate::metadata::HaCKLoadType;
+use crate::{Color, HaCK};
 use abi_stable::library::RootModule;
 use abi_stable::sabi_types::{RRef, VersionStrings};
 use abi_stable::{
     declare_root_module_statics, package_version_strings, sabi_trait,
-    std_types::{RBox, ROption, RStr},
+    std_types::{RBox, ROption, RStr, RString},
     StableAbi,
 };
 use erased_serde::Serialize as ErasedSerialize;
@@ -34,7 +36,76 @@ pub struct StableWindowOptions {
     pub resizable: bool,
 }
 
-/// Stable UI Backend trait.
+/// Stable version of HaCMetadata for ABI-safe transfer across DLL boundaries.
+#[repr(C)]
+#[derive(StableAbi, Clone)]
+pub struct StableHaCMetadata {
+    pub name: RString,
+    pub description: RString,
+    pub category: RString,
+    pub menu_weight: f32,
+    pub window_weight: f32,
+    pub draw_weight: f32,
+    pub update_weight: f32,
+    pub visible_in_gui: bool,
+    pub is_menu_enabled: bool,
+    pub is_window_enabled: bool,
+    pub is_render_enabled: bool,
+    pub is_update_enabled: bool,
+    pub window_pos: [f32; 2],
+    pub window_size: [f32; 2],
+    pub auto_resize_window: bool,
+    pub load_type: HaCKLoadType,
+}
+
+impl StableHaCMetadata {
+    /// Convert from native HaCMetadata to StableHaCMetadata
+    pub fn from_metadata(meta: &HaCMetadata) -> Self {
+        Self {
+            name: meta.name.to_string().into(),
+            description: meta.description.to_string().into(),
+            category: meta.category.to_string().into(),
+            menu_weight: meta.menu_weight,
+            window_weight: meta.window_weight,
+            draw_weight: meta.draw_weight,
+            update_weight: meta.update_weight,
+            visible_in_gui: meta.visible_in_gui,
+            is_menu_enabled: meta.is_menu_enabled,
+            is_window_enabled: meta.is_window_enabled,
+            is_render_enabled: meta.is_render_enabled,
+            is_update_enabled: meta.is_update_enabled,
+            window_pos: meta.window_pos,
+            window_size: meta.window_size,
+            auto_resize_window: meta.auto_resize_window,
+            load_type: meta.load_type.clone(),
+        }
+    }
+
+    /// Convert to native HaCMetadata
+    pub fn to_metadata(&self) -> HaCMetadata {
+        HaCMetadata {
+            name: Cow::Owned(self.name.to_string()),
+            description: Cow::Owned(self.description.to_string()),
+            category: Cow::Owned(self.category.to_string()),
+            hotkeys: Vec::new(), // Hotkeys not transferred via ABI for now
+            menu_weight: self.menu_weight,
+            window_weight: self.window_weight,
+            draw_weight: self.draw_weight,
+            update_weight: self.update_weight,
+            visible_in_gui: self.visible_in_gui,
+            is_menu_enabled: self.is_menu_enabled,
+            is_window_enabled: self.is_window_enabled,
+            is_render_enabled: self.is_render_enabled,
+            is_update_enabled: self.is_update_enabled,
+            auto_resize_window: self.auto_resize_window,
+            window_pos: self.window_pos,
+            window_size: self.window_size,
+            access_control: AccessControl::new(AccessLevel::ReadWrite),
+            load_type: self.load_type.clone(),
+        }
+    }
+}
+
 /// Note: Removed Send/Sync bounds as UiBackend is not Sync.
 #[sabi_trait]
 pub trait StableUiBackend {
@@ -52,6 +123,7 @@ pub trait StableUiBackend {
     fn checkbox(&self, label: RStr<'_>, value: &mut bool) -> bool;
     fn slider_float(&self, label: RStr<'_>, min: f32, max: f32, value: &mut f32) -> bool;
     fn color_edit3(&self, label: RStr<'_>, color: &mut [f32; 3]) -> bool;
+    fn input_text(&self, label: RStr<'_>, value: &mut RString) -> bool;
 
     // Windows
     fn begin_window(&self, title: RStr<'_>, options: &StableWindowOptions) -> bool;
@@ -63,6 +135,20 @@ pub trait StableUiBackend {
     fn begin_menu(&self, label: RStr<'_>) -> bool;
     fn end_menu(&self);
     fn menu_item(&self, label: RStr<'_>) -> bool;
+
+    // Drawing
+    fn get_window_draw_list(&self) -> StableDrawList_TO<'_, RBox<()>>;
+    // get_{foreground,background}_draw_list removed to prevent double-borrow panics
+}
+
+#[sabi_trait]
+pub trait StableDrawList {
+    fn add_rect(&mut self, p1: [f32; 2], p2: [f32; 2], color: [f32; 4], filled: bool);
+    fn add_text(&mut self, pos: [f32; 2], color: [f32; 4], text: RStr<'_>);
+    fn add_line(&mut self, p1: [f32; 2], p2: [f32; 2], color: [f32; 4], thickness: f32);
+    fn add_circle(&mut self, center: [f32; 2], radius: f32, color: [f32; 4], filled: bool);
+    fn push_clip_rect(&mut self, min: [f32; 2], max: [f32; 2], intersect_with_current: bool);
+    fn pop_clip_rect(&mut self);
 }
 
 #[sabi_trait]
@@ -73,6 +159,13 @@ pub trait StableHaCK: Send + Sync {
 
     fn render_menu(&mut self, ui: &StableUiBackend_TO<'_, RRef<'_, ()>>);
     fn render_window(&mut self, ui: &StableUiBackend_TO<'_, RRef<'_, ()>>);
+    fn render_draw(
+        &mut self,
+        ui: &StableUiBackend_TO<'_, RRef<'_, ()>>,
+        draw_fg: &mut StableDrawList_TO<'_, RBox<()>>,
+        draw_bg: &mut StableDrawList_TO<'_, RBox<()>>,
+    );
+    fn metadata(&self) -> &StableHaCMetadata;
 
     fn on_load(&mut self) {}
     fn on_unload(&mut self) {}
@@ -99,9 +192,14 @@ impl RootModule for HackersModule_Ref {
 // IMPLS
 ///////////////////////////////////////////////////////////////////////////////
 
+use crate::gui::{MenuBarToken, MenuToken};
+use std::cell::RefCell;
+
 /// Wraps the host's `&dyn UiBackend` and exposes it as `StableUiBackend`.
 pub struct StableUiBackendWrapper<'a> {
     pub backend: &'a dyn UiBackend,
+    pub menu_tokens: RefCell<Vec<MenuToken<'a>>>,
+    pub menu_bar_tokens: RefCell<Vec<MenuBarToken<'a>>>,
 }
 
 impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
@@ -112,6 +210,8 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
     fn text_colored(&self, color: [f32; 4], text: RStr<'_>) {
         self.backend.text_colored(color, text.as_str());
     }
+
+    // ... (keep existing methods unchanged until begin_menu)
 
     fn separator(&self) {
         self.backend.separator();
@@ -139,6 +239,18 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
 
     fn color_edit3(&self, label: RStr<'_>, color: &mut [f32; 3]) -> bool {
         self.backend.color_edit3(label.as_str(), color)
+    }
+
+    fn input_text(&self, label: RStr<'_>, value: &mut RString) -> bool {
+        let mut string_val = value.to_string();
+        let changed = self
+            .backend
+            .input_text(label.as_str(), &mut string_val)
+            .build();
+        if changed {
+            *value = RString::from(string_val);
+        }
+        changed
     }
 
     fn begin_window(&self, title: RStr<'_>, options: &StableWindowOptions) -> bool {
@@ -182,15 +294,89 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
     }
 
     fn begin_menu_bar(&self) -> bool {
-        self.backend.begin_menu_bar().is_some()
+        if let Some(token) = self.backend.begin_menu_bar() {
+            self.menu_bar_tokens.borrow_mut().push(token);
+            true
+        } else {
+            false
+        }
     }
-    fn end_menu_bar(&self) {}
+
+    fn end_menu_bar(&self) {
+        self.menu_bar_tokens.borrow_mut().pop();
+    }
+
     fn begin_menu(&self, label: RStr<'_>) -> bool {
-        self.backend.begin_menu(label.as_str()).is_some()
+        if let Some(token) = self.backend.begin_menu(label.as_str()) {
+            self.menu_tokens.borrow_mut().push(token);
+            true
+        } else {
+            false
+        }
     }
-    fn end_menu(&self) {}
+
+    fn end_menu(&self) {
+        self.menu_tokens.borrow_mut().pop();
+    }
+
     fn menu_item(&self, label: RStr<'_>) -> bool {
         self.backend.menu_item(label.as_str())
+    }
+
+    fn get_window_draw_list(&self) -> StableDrawList_TO<'_, RBox<()>> {
+        let draw_list = self.backend.get_window_draw_list();
+        let wrapper = StableDrawListWrapper { inner: draw_list };
+        StableDrawList_TO::from_value(wrapper, abi_stable::sabi_trait::TD_Opaque)
+    }
+}
+
+pub struct StableDrawListWrapper<'a> {
+    pub inner: Box<dyn DrawList + 'a>,
+}
+
+impl<'a> StableDrawList for StableDrawListWrapper<'a> {
+    fn add_rect(&mut self, p1: [f32; 2], p2: [f32; 2], color: [f32; 4], filled: bool) {
+        self.inner.add_rect(
+            Vec2::from(p1),
+            Vec2::from(p2),
+            Color::rgba(color[0], color[1], color[2], color[3]),
+            filled,
+        );
+    }
+
+    fn add_text(&mut self, pos: [f32; 2], color: [f32; 4], text: RStr<'_>) {
+        self.inner.add_text(
+            Vec2::from(pos),
+            Color::rgba(color[0], color[1], color[2], color[3]),
+            text.as_str(),
+        );
+    }
+
+    fn add_line(&mut self, p1: [f32; 2], p2: [f32; 2], color: [f32; 4], thickness: f32) {
+        self.inner.add_line(
+            Vec2::from(p1),
+            Vec2::from(p2),
+            Color::rgba(color[0], color[1], color[2], color[3]),
+            thickness,
+        );
+    }
+
+    fn add_circle(&mut self, center: [f32; 2], radius: f32, color: [f32; 4], filled: bool) {
+        self.inner.add_circle(
+            Vec2::from(center),
+            radius,
+            Color::rgba(color[0], color[1], color[2], color[3]),
+            filled,
+        );
+    }
+
+    fn push_clip_rect(&mut self, min: [f32; 2], max: [f32; 2], intersect_with_current: bool) {
+        self.inner
+            .push_clip_rect(Vec2::from(min), Vec2::from(max), intersect_with_current);
+    }
+
+    fn pop_clip_rect(&mut self) {
+        self.inner.pop_clip_rect();
     }
 }
 
@@ -210,26 +396,63 @@ impl Serialize for ForeignHaCK {
     }
 }
 
-lazy_static! {
-    static ref FOREIGN_META: HaCMetadata = HaCMetadata {
-        name: Cow::Borrowed("ForeignModule"),
-        description: Cow::Borrowed("External DLL Module"),
-        category: Cow::Borrowed("External"),
-        hotkeys: vec![],
-        menu_weight: 0.0,
-        window_weight: 0.0,
-        draw_weight: 0.0,
-        update_weight: 0.0,
-        visible_in_gui: true,
-        is_menu_enabled: true,
-        is_window_enabled: true,
-        is_render_enabled: false,
-        is_update_enabled: true,
-        auto_resize_window: true,
-        window_pos: [0.0, 0.0],
-        window_size: [0.0, 0.0],
-        access_control: AccessControl::new(AccessLevel::ReadWrite),
-    };
+impl ForeignHaCK {
+    /// Create a new ForeignHaCK from a StableHaCK instance.
+    /// Extracts metadata from the plugin during creation.
+    pub fn new(inner: StableHaCK_TO<'static, RBox<()>>) -> Self {
+        let metadata = inner.metadata().to_metadata();
+        Self { inner, metadata }
+    }
+}
+
+// Helper to forward DrawList calls from a Box to a mutable reference
+struct ForwardingDrawList<'a> {
+    inner: &'a mut dyn crate::gui::DrawList,
+}
+
+impl<'a> crate::gui::DrawList for ForwardingDrawList<'a> {
+    fn add_rect(
+        &mut self,
+        p1: crate::gui::Vec2,
+        p2: crate::gui::Vec2,
+        color: crate::gui::Color,
+        filled: bool,
+    ) {
+        self.inner.add_rect(p1, p2, color, filled);
+    }
+
+    fn add_text(&mut self, pos: crate::gui::Vec2, color: crate::gui::Color, text: &str) {
+        self.inner.add_text(pos, color, text);
+    }
+    fn add_line(
+        &mut self,
+        p1: crate::gui::Vec2,
+        p2: crate::gui::Vec2,
+        color: crate::gui::Color,
+        thickness: f32,
+    ) {
+        self.inner.add_line(p1, p2, color, thickness);
+    }
+    fn add_circle(
+        &mut self,
+        center: crate::gui::Vec2,
+        radius: f32,
+        color: crate::gui::Color,
+        filled: bool,
+    ) {
+        self.inner.add_circle(center, radius, color, filled);
+    }
+    fn push_clip_rect(
+        &mut self,
+        min: crate::gui::Vec2,
+        max: crate::gui::Vec2,
+        intersect_with_current: bool,
+    ) {
+        self.inner.push_clip_rect(min, max, intersect_with_current);
+    }
+    fn pop_clip_rect(&mut self) {
+        self.inner.pop_clip_rect();
+    }
 }
 
 impl HaCK for ForeignHaCK {
@@ -249,15 +472,53 @@ impl HaCK for ForeignHaCK {
     }
 
     fn render_menu(&mut self, ui: &dyn UiBackend) {
-        let wrapper = StableUiBackendWrapper { backend: ui };
+        let wrapper = StableUiBackendWrapper {
+            backend: ui,
+            menu_tokens: RefCell::new(Vec::new()),
+            menu_bar_tokens: RefCell::new(Vec::new()),
+        };
         let wrapper_ref = StableUiBackend_TO::from_ptr(&wrapper, abi_stable::sabi_trait::TD_Opaque);
         self.inner.render_menu(&wrapper_ref);
     }
 
     fn render_window(&mut self, ui: &dyn UiBackend) {
-        let wrapper = StableUiBackendWrapper { backend: ui };
+        let wrapper = StableUiBackendWrapper {
+            backend: ui,
+            menu_tokens: RefCell::new(Vec::new()),
+            menu_bar_tokens: RefCell::new(Vec::new()),
+        };
         let wrapper_ref = StableUiBackend_TO::from_ptr(&wrapper, abi_stable::sabi_trait::TD_Opaque);
         self.inner.render_window(&wrapper_ref);
+    }
+
+    fn render_draw(
+        &mut self,
+        ui: &dyn UiBackend,
+        draw_fg: &mut dyn crate::gui::DrawList,
+        draw_bg: &mut dyn crate::gui::DrawList,
+    ) {
+        let wrapper = StableUiBackendWrapper {
+            backend: ui,
+            menu_tokens: RefCell::new(Vec::new()),
+            menu_bar_tokens: RefCell::new(Vec::new()),
+        };
+        let wrapper_ref = StableUiBackend_TO::from_ptr(&wrapper, abi_stable::sabi_trait::TD_Opaque);
+
+        // Wrap the draw lists
+        let draw_fg_wrapper = StableDrawListWrapper {
+            inner: Box::new(ForwardingDrawList { inner: draw_fg }),
+        };
+        let mut draw_fg_ref =
+            StableDrawList_TO::from_value(draw_fg_wrapper, abi_stable::sabi_trait::TD_Opaque);
+
+        let draw_bg_wrapper = StableDrawListWrapper {
+            inner: Box::new(ForwardingDrawList { inner: draw_bg }),
+        };
+        let mut draw_bg_ref =
+            StableDrawList_TO::from_value(draw_bg_wrapper, abi_stable::sabi_trait::TD_Opaque);
+
+        self.inner
+            .render_draw(&wrapper_ref, &mut draw_fg_ref, &mut draw_bg_ref);
     }
 
     fn update(&mut self, _hacs: &crate::hackrs::HaCKS::HaCKS) {
@@ -268,16 +529,16 @@ impl HaCK for ForeignHaCK {
         TypeId::of::<ForeignHaCK>()
     }
     fn update_weight(&self) -> f32 {
-        0.0
+        self.metadata.update_weight
     }
     fn window_weight(&self) -> f32 {
-        0.0
+        self.metadata.window_weight
     }
     fn draw_weight(&self) -> f32 {
-        0.0
+        self.metadata.draw_weight
     }
     fn menu_weight(&self) -> f32 {
-        0.0
+        self.metadata.menu_weight
     }
     fn metadata(&self) -> &HaCMetadata {
         &self.metadata
@@ -286,30 +547,44 @@ impl HaCK for ForeignHaCK {
         &mut self.metadata
     }
     fn is_menu_enabled(&self) -> bool {
-        true
+        self.metadata.is_menu_enabled
     }
     fn is_window_enabled(&self) -> bool {
-        true
+        self.metadata.is_window_enabled
     }
     fn is_render_enabled(&self) -> bool {
-        false
+        self.metadata.is_render_enabled
     }
     fn is_update_enabled(&self) -> bool {
-        true
+        self.metadata.is_update_enabled
     }
 
-    fn set_update_weight(&mut self, _: f32) {}
-    fn set_window_weight(&mut self, _: f32) {}
-    fn set_show_menu(&mut self, _: bool) -> bool {
-        false
+    fn set_update_weight(&mut self, val: f32) {
+        self.metadata.update_weight = val;
     }
-    fn set_show_window(&mut self, _: bool) -> bool {
-        false
+    fn set_window_weight(&mut self, val: f32) {
+        self.metadata.window_weight = val;
     }
-    fn set_menu_weight(&mut self, _: f32) {}
-    fn set_draw_weight(&mut self, _: f32) {}
-    fn set_render_enabled(&mut self, _: bool) {}
-    fn set_update_enabled(&mut self, _: bool) {}
+    fn set_show_menu(&mut self, val: bool) -> bool {
+        self.metadata.is_menu_enabled = val;
+        val
+    }
+    fn set_show_window(&mut self, val: bool) -> bool {
+        self.metadata.is_window_enabled = val;
+        val
+    }
+    fn set_menu_weight(&mut self, val: f32) {
+        self.metadata.menu_weight = val;
+    }
+    fn set_draw_weight(&mut self, val: f32) {
+        self.metadata.draw_weight = val;
+    }
+    fn set_render_enabled(&mut self, val: bool) {
+        self.metadata.is_render_enabled = val;
+    }
+    fn set_update_enabled(&mut self, val: bool) {
+        self.metadata.is_update_enabled = val;
+    }
 
     fn as_any(&self) -> &dyn std::any::Any {
         self

@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../shared/shared-styles.css">
+    <script src="../shared/shared.js"></script>
+    <script src="../shared/shapes.js"></script>
+    <title>Globe Frame Generator</title>
+    <style>
+        body {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            grid-column: 1 / -1;
+        }
+
+        .controls {
+            grid-column: 1;
+            grid-row: 2;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+        }
+
+        .frame-container {
+            grid-column: 2;
+            grid-row: 2;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .preset-card {
+            cursor: pointer;
+            transition: all 0.2s;
+            padding: 8px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            background: rgba(0,0,0,0.3);
+            position: relative;
+        }
+        
+        .preset-card.active {
+            border-color: var(--accent-success);
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .preset-card:hover {
+            border-color: rgba(255,255,255,0.3);
+        }
+        
+        .preset-preview {
+            display: flex;
+            gap: 2px;
+            height: 12px;
+            margin-bottom: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .preset-preview-bar {
+            flex: 1;
+            height: 100%;
+        }
+
+        .preset-name {
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .preset-desc {
+            font-size: 9px;
+            color: #aaa;
+        }
+
+        .preset-delete {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            background: var(--accent-error);
+        }
+
+        .icon-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            gap: 8px;
+            margin: 12px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+        }
+
+        .icon-option {
+            cursor: pointer;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 8px;
+            transition: all 0.2s;
+            text-align: center;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .icon-option:hover {
+            border-color: rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .icon-option.active {
+            border-color: var(--accent-success);
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .icon-option canvas {
+            width: 48px;
+            height: 48px;
+            display: block;
+            margin: 0 auto 4px;
+        }
+
+        .icon-option-label {
+            font-size: 9px;
+            color: #aaa;
+        }
+
+        .mode-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .mode-tab {
+            flex: 1;
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .mode-tab.active {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: var(--accent-success);
+        }
+
+        .mode-tab:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .mode-tab strong {
+            font-size: 11px;
+            display: block;
+            margin-top: 4px;
+        }
+
+        .mode-tab-desc {
+            font-size: 9px;
+            color: #aaa;
+            margin-top: 3px;
+        }
+
+        .section-header {
+            font-size: 13px;
+            font-weight: 600;
+            margin: 16px 0 8px 0;
+            color: var(--text-primary);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 4px;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            font-size: 11px;
+            padding: 6px;
+        }
+
+        .gradient-color-input {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            gap: 6px;
+        }
+
+        .gradient-color-input input[type="color"] {
+            width: 30px;
+            height: 24px;
+            padding: 2px;
+        }
+
+        .gradient-color-input input[type="range"] {
+            flex: 1;
+        }
+
+        .gradient-color-input .range-label {
+            min-width: 35px;
+            font-size: 10px;
+            color: #aaa;
+        }
+
+        .gradient-color-input .delete-stop {
+            padding: 2px 6px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚗️ Shape State Globe Generator</h1>
+        <p>Generate percentage-based frame sequences using any icon shape</p>
+    </div>
+
+    <div class="controls">
+        <div class="section-header">📋 Presets</div>
+        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px;">
+            <button class="secondary" style="font-size: 11px; padding: 4px 8px;" onclick="savePreset()">💾 Save</button>
+            <button class="secondary" style="font-size: 11px; padding: 4px 8px;" onclick="exportPresets()">📥 Export</button>
+            <button class="secondary" style="font-size: 11px; padding: 4px 8px;" onclick="document.getElementById('importFile').click()">📤 Import</button>
+            <input type="file" id="importFile" accept=".json" style="display: none;" onchange="importPresets(event)">
+        </div>
+        <div class="preset-grid" id="presetGrid"></div>
+
+        <div class="section-header">🎮 Display Mode</div>
+        <div class="mode-tabs">
+            <div class="mode-tab active" onclick="setDisplayMode('single')" id="singleModeTab">
+                <div style="font-size: 20px;">⚪</div>
+                <strong>Single</strong>
+                <div class="mode-tab-desc">One shape fills 0-100%</div>
+            </div>
+            <div class="mode-tab" onclick="setDisplayMode('container')" id="containerModeTab">
+                <div style="font-size: 20px;">❤️❤️❤️</div>
+                <strong>Container</strong>
+                <div class="mode-tab-desc">Multiple containers (Zelda-style)</div>
+            </div>
+        </div>
+
+        <div id="containerSettings" style="display: none;">
+            <div class="control-group">
+                <label>Container Count:</label>
+                <input type="number" id="containerCount" value="5" min="1" max="20">
+            </div>
+            <div class="control-group">
+                <label>Fill Style:</label>
+                <select id="fillStyle">
+                    <option value="complete">Complete Fill - Each fills fully</option>
+                    <option value="gradient">Gradient Fill - Partial fill</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Empty Display:</label>
+                <select id="emptyDisplay">
+                    <option value="show">Show Empty</option>
+                    <option value="hide">Hide Empty</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Container Layout:</label>
+                <select id="containerLayout">
+                    <option value="horizontal">Horizontal</option>
+                    <option value="vertical">Vertical</option>
+                    <option value="grid">Grid</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Spacing (px):</label>
+                <input type="number" id="containerSpacing" value="4" min="0" max="20">
+            </div>
+        </div>
+
+        <div class="section-header">🎨 Icon Selection</div>
+        <div id="iconSelector" class="icon-selector"></div>
+
+        <div class="section-header">⚙️ Configuration</div>
+        <div class="control-group">
+            <label>Frame Count:</label>
+            <input type="number" id="frameCount" value="101" min="2" max="200">
+            <span id="frameCountLabel" style="font-size: 10px; color: #aaa;">frames (0-100%)</span>
+        </div>
+        
+        <div class="control-group">
+            <label>Size:</label>
+            <input type="number" id="size" value="64" min="16" max="256">
+            <span id="sizeLabel" style="font-size: 10px; color: #aaa;">pixels (per shape)</span>
+        </div>
+
+        <div class="control-group">
+            <label>Color Scheme:</label>
+            <select id="colorScheme" onchange="updateColorMode()">
+                <option value="health">Health (Red)</option>
+                <option value="mana">Mana (Blue)</option>
+                <option value="stamina">Stamina (Yellow)</option>
+                <option value="shield">Shield (Cyan)</option>
+                <option value="poison">Poison (Green)</option>
+                <option value="energy">Energy (Purple)</option>
+                <option value="custom">Custom Gradient</option>
+                <option value="solid">Solid Color</option>
+            </select>
+        </div>
+
+        <div id="customColorControls" style="display: none;">
+            <button class="secondary" style="font-size: 11px; padding: 4px 8px; margin: 6px 0;" onclick="addGradientStop()">+ Add Color Stop</button>
+            <div id="gradientInputs"></div>
+        </div>
+
+        <div id="solidColorControl" style="display: none;">
+            <div class="control-group">
+                <label>Color:</label>
+                <input type="color" id="solidColor" value="#cc0000">
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 6px;">
+            <button onclick="generateFrames()">Generate Frames</button>
+            <button class="secondary" onclick="downloadAll()">Download ZIP</button>
+            <button class="secondary" onclick="downloadSheet()">Download Sheet</button>
+            <button class="secondary" onclick="downloadWithConfig()">Download w/ Config</button>
+        </div>
+    </div>
+
+    <div class="frame-container">
+        <div class="grid" id="frameGrid"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        const SpriteColor = SpriteTools.color;
+        const SpriteFiles = SpriteTools.files;
+        const SpriteStorage = SpriteTools.storage;
+        const SpriteConfig = SpriteTools.sprite;
+        const SpriteUI = SpriteTools.ui;
+
+        let frames = [];
+        let currentIcon = 'circle';
+        let currentPresetId = null;
+        let displayMode = 'single';
+        let gradientStops = [
+            { position: 0, color: '#330000' },
+            { position: 1.0, color: '#cc0000' }
+        ];
+
+        const colorSchemes = {
+            health: { high: '#cc0000', mid: '#990000', low: '#660000', empty: '#330000' },
+            mana: { high: '#3366ff', mid: '#1a4dcc', low: '#0d3399', empty: '#061a4d' },
+            stamina: { high: '#ffcc00', mid: '#cc9900', low: '#996600', empty: '#4d3300' },
+            shield: { high: '#00ccff', mid: '#0099cc', low: '#006699', empty: '#003333' },
+            poison: { high: '#00ff00', mid: '#00cc00', low: '#009900', empty: '#004d00' },
+            energy: { high: '#cc00ff', mid: '#9900cc', low: '#660099', empty: '#33004d' }
+        };
+
+        const defaultPresets = [
+            {
+                id: 'health-classic',
+                name: '❤️ Classic Health',
+                description: 'Dark red to bright red',
+                frameCount: 101,
+                size: 64,
+                icon: 'radial',
+                colorScheme: 'health',
+                displayMode: 'single'
+            },
+            {
+                id: 'zelda-hearts',
+                name: '💕 Zelda Hearts',
+                description: '5 heart containers',
+                frameCount: 51,
+                size: 32,
+                icon: 'heart',
+                colorScheme: 'health',
+                displayMode: 'container',
+                containerCount: 5,
+                fillStyle: 'gradient',
+                emptyDisplay: 'show',
+                containerLayout: 'horizontal',
+                containerSpacing: 4
+            },
+            {
+                id: 'mana-blue',
+                name: '💙 Mana Pool',
+                description: 'Deep blue gradient',
+                frameCount: 101,
+                size: 64,
+                icon: 'orb',
+                colorScheme: 'mana',
+                displayMode: 'single'
+            },
+            {
+                id: 'stamina-bar',
+                name: '⚡ Stamina Bar',
+                description: 'Yellow horizontal bar',
+                frameCount: 101,
+                size: 64,
+                icon: 'bar',
+                colorScheme: 'stamina',
+                displayMode: 'single'
+            },
+            {
+                id: 'shield-bubbles',
+                name: '🛡️ Shield Bubbles',
+                description: '3 shield orbs',
+                frameCount: 31,
+                size: 48,
+                icon: 'orb',
+                colorScheme: 'shield',
+                displayMode: 'container',
+                containerCount: 3,
+                fillStyle: 'complete',
+                emptyDisplay: 'show',
+                containerLayout: 'horizontal',
+                containerSpacing: 8
+            },
+            {
+                id: 'energy-crystals',
+                name: '💎 Energy Crystals',
+                description: '8 purple diamonds',
+                frameCount: 81,
+                size: 28,
+                icon: 'diamond',
+                colorScheme: 'energy',
+                displayMode: 'container',
+                containerCount: 8,
+                fillStyle: 'gradient',
+                emptyDisplay: 'show',
+                containerLayout: 'horizontal',
+                containerSpacing: 2
+            }
+        ];
+
+        let userPresets = [];
+
+        function setDisplayMode(mode) {
+            displayMode = mode;
+            document.getElementById('singleModeTab').classList.toggle('active', mode === 'single');
+            document.getElementById('containerModeTab').classList.toggle('active', mode === 'container');
+            document.getElementById('containerSettings').style.display = mode === 'container' ? 'block' : 'none';
+            updateFrameCountLabel();
+            updateSizeLabel();
+        }
+
+        function updateFrameCountLabel() {
+            const label = document.getElementById('frameCountLabel');
+            if (displayMode === 'container') {
+                const count = parseInt(document.getElementById('containerCount').value) || 5;
+                label.textContent = `frames (0 to ${count} containers)`;
+            } else {
+                label.textContent = 'frames (0-100%)';
+            }
+        }
+
+        function updateSizeLabel() {
+            const label = document.getElementById('sizeLabel');
+            label.textContent = displayMode === 'container' ? 'pixels (size of each container)' : 'pixels (per shape)';
+        }
+
+        // Preset Management
+        function loadPresets() {
+            userPresets = SpriteStorage.get('globePresets', []);
+            renderPresets();
+        }
+
+        function renderPresets() {
+            const grid = document.getElementById('presetGrid');
+            grid.innerHTML = '';
+            
+            const allPresets = [...defaultPresets, ...userPresets];
+            
+            allPresets.forEach(preset => {
+                const card = document.createElement('div');
+                card.className = 'preset-card';
+                if (currentPresetId === preset.id) card.classList.add('active');
+                
+                const preview = document.createElement('div');
+                preview.className = 'preset-preview';
+                const colors = getPresetColors(preset);
+                colors.forEach(color => {
+                    const bar = document.createElement('div');
+                    bar.className = 'preset-preview-bar';
+                    bar.style.backgroundColor = color;
+                    preview.appendChild(bar);
+                });
+                
+                const name = document.createElement('div');
+                name.className = 'preset-name';
+                name.textContent = preset.name;
+                
+                const desc = document.createElement('div');
+                desc.className = 'preset-desc';
+                desc.textContent = preset.description;
+                
+                card.appendChild(preview);
+                card.appendChild(name);
+                card.appendChild(desc);
+                card.onclick = () => loadPreset(preset);
+                
+                if (!defaultPresets.find(p => p.id === preset.id)) {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'preset-delete';
+                    deleteBtn.textContent = '×';
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        deletePreset(preset.id);
+                    };
+                    card.appendChild(deleteBtn);
+                }
+                
+                grid.appendChild(card);
+            });
+        }
+
+        function getPresetColors(preset) {
+            if (preset.colorScheme === 'custom' && preset.gradientStops) {
+                return preset.gradientStops.map(s => s.color);
+            } else if (preset.colorScheme === 'solid' && preset.solidColor) {
+                return [preset.solidColor];
+            } else if (colorSchemes[preset.colorScheme]) {
+                const scheme = colorSchemes[preset.colorScheme];
+                return [scheme.empty, scheme.low, scheme.mid, scheme.high];
+            }
+            return ['#666666'];
+        }
+
+        function loadPreset(preset) {
+            currentPresetId = preset.id;
+            document.getElementById('frameCount').value = preset.frameCount;
+            document.getElementById('size').value = preset.size;
+            currentIcon = preset.icon || preset.style || 'circle';
+            document.getElementById('colorScheme').value = preset.colorScheme;
+            
+            if (preset.displayMode) setDisplayMode(preset.displayMode);
+            if (preset.containerCount) document.getElementById('containerCount').value = preset.containerCount;
+            if (preset.fillStyle) document.getElementById('fillStyle').value = preset.fillStyle;
+            if (preset.emptyDisplay) document.getElementById('emptyDisplay').value = preset.emptyDisplay;
+            if (preset.containerLayout) document.getElementById('containerLayout').value = preset.containerLayout;
+            if (preset.containerSpacing !== undefined) document.getElementById('containerSpacing').value = preset.containerSpacing;
+            
+            if (preset.colorScheme === 'custom' && preset.gradientStops) {
+                gradientStops = JSON.parse(JSON.stringify(preset.gradientStops));
+            } else if (preset.colorScheme === 'solid' && preset.solidColor) {
+                document.getElementById('solidColor').value = preset.solidColor;
+            }
+            
+            updateColorMode();
+            renderPresets();
+            updateIconSelector();
+            generateFrames();
+        }
+
+        function savePreset() {
+            const name = prompt('Enter preset name:');
+            if (!name) return;
+            
+            const description = prompt('Enter description (optional):') || '';
+            
+            const preset = {
+                id: 'user-' + Date.now(),
+                name: name,
+                description: description,
+                frameCount: parseInt(document.getElementById('frameCount').value),
+                size: parseInt(document.getElementById('size').value),
+                icon: currentIcon,
+                colorScheme: document.getElementById('colorScheme').value,
+                displayMode: displayMode
+            };
+            
+            if (displayMode === 'container') {
+                preset.containerCount = parseInt(document.getElementById('containerCount').value);
+                preset.fillStyle = document.getElementById('fillStyle').value;
+                preset.emptyDisplay = document.getElementById('emptyDisplay').value;
+                preset.containerLayout = document.getElementById('containerLayout').value;
+                preset.containerSpacing = parseInt(document.getElementById('containerSpacing').value);
+            }
+            
+            if (preset.colorScheme === 'custom') {
+                preset.gradientStops = JSON.parse(JSON.stringify(gradientStops));
+            } else if (preset.colorScheme === 'solid') {
+                preset.solidColor = document.getElementById('solidColor').value;
+            }
+            
+            userPresets.push(preset);
+            SpriteStorage.set('globePresets', userPresets);
+            currentPresetId = preset.id;
+            renderPresets();
+            SpriteUI.showNotification('Preset saved!', 'success');
+        }
+
+        function deletePreset(id) {
+            if (confirm('Delete this preset?')) {
+                userPresets = userPresets.filter(p => p.id !== id);
+                SpriteStorage.set('globePresets', userPresets);
+                if (currentPresetId === id) currentPresetId = null;
+                renderPresets();
+                SpriteUI.showNotification('Preset deleted', 'info');
+            }
+        }
+
+        function exportPresets() {
+            SpriteFiles.downloadJSON(userPresets, 'globe_presets.json');
+            SpriteUI.showNotification('Presets exported!', 'success');
+        }
+
+        async function importPresets(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            try {
+                const imported = await SpriteFiles.loadJSON(file);
+                if (Array.isArray(imported)) {
+                    imported.forEach(preset => {
+                        if (!userPresets.find(p => p.id === preset.id)) {
+                            preset.id = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                            userPresets.push(preset);
+                        }
+                    });
+                    SpriteStorage.set('globePresets', userPresets);
+                    renderPresets();
+                    SpriteUI.showNotification('Presets imported!', 'success');
+                }
+            } catch (err) {
+                SpriteUI.showNotification('Failed to import: ' + err.message, 'error');
+            }
+            event.target.value = '';
+        }
+
+        // Icon Selection
+        function initIconSelector() {
+            const selector = document.getElementById('iconSelector');
+            const allShapes = [
+                ...Shapes.getFillShapes(),
+                ...Shapes.getIcons().map(icon => ({
+                    id: icon.id,
+                    name: icon.name,
+                    draw: (ctx, percent, empty, fill) => {
+                        ctx.save();
+                        ctx.globalAlpha = percent;
+                        icon.draw(ctx);
+                        ctx.restore();
+                    }
+                }))
+            ];
+
+            allShapes.forEach(shape => {
+                const option = document.createElement('div');
+                option.className = 'icon-option';
+                option.dataset.iconId = shape.id;
+                if (shape.id === currentIcon) option.classList.add('active');
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = 48;
+                canvas.height = 48;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.save();
+                ctx.scale(48/128, 48/128);
+                if (Shapes.metadata[shape.id]?.type === 'fill') {
+                    shape.draw(ctx, 0.5, '#222', '#ff6600');
+                } else {
+                    ctx.globalAlpha = 0.8;
+                    Shapes[shape.id](ctx);
+                }
+                ctx.restore();
+                
+                const label = document.createElement('div');
+                label.className = 'icon-option-label';
+                label.textContent = shape.name;
+                
+                option.appendChild(canvas);
+                option.appendChild(label);
+                option.onclick = () => selectIcon(shape.id);
+                
+                selector.appendChild(option);
+            });
+        }
+
+        function selectIcon(iconId) {
+            currentIcon = iconId;
+            updateIconSelector();
+            generateFrames();
+        }
+
+        function updateIconSelector() {
+            document.querySelectorAll('.icon-option').forEach(opt => {
+                opt.classList.toggle('active', opt.dataset.iconId === currentIcon);
+            });
+        }
+
+        // Color Management
+        function updateColorMode() {
+            const scheme = document.getElementById('colorScheme').value;
+            document.getElementById('customColorControls').style.display = scheme === 'custom' ? 'block' : 'none';
+            document.getElementById('solidColorControl').style.display = scheme === 'solid' ? 'block' : 'none';
+            if (scheme === 'custom') updateGradientInputs();
+        }
+
+        function getColorForPercentage(percent, scheme) {
+            if (scheme === 'solid') {
+                const baseColor = document.getElementById('solidColor').value;
+                const rgb = SpriteColor.hexToRgb(baseColor);
+                const factor = 0.3 + (percent * 0.7);
+                return SpriteColor.rgbToHex(rgb.r * factor, rgb.g * factor, rgb.b * factor);
+            }
+            
+            if (scheme === 'custom') {
+                return SpriteColor.getGradientColor(percent, gradientStops);
+            }
+            
+            const colors = colorSchemes[scheme];
+            if (percent <= 0) return colors.empty;
+            if (percent >= 1) return colors.high;
+            
+            if (percent < 0.33) {
+                const t = percent / 0.33;
+                return SpriteColor.lerp(colors.empty, colors.low, t);
+            } else if (percent < 0.66) {
+                const t = (percent - 0.33) / 0.33;
+                return SpriteColor.lerp(colors.low, colors.mid, t);
+            } else {
+                const t = (percent - 0.66) / 0.34;
+                return SpriteColor.lerp(colors.mid, colors.high, t);
+            }
+        }
+
+        function addGradientStop() {
+            gradientStops.sort((a, b) => a.position - b.position);
+            let maxGap = 0, maxGapPos = 0.5;
+            
+            for (let i = 0; i < gradientStops.length - 1; i++) {
+                const gap = gradientStops[i + 1].position - gradientStops[i].position;
+                if (gap > maxGap) {
+                    maxGap = gap;
+                    maxGapPos = (gradientStops[i].position + gradientStops[i + 1].position) / 2;
+                }
+            }
+            
+            gradientStops.push({ 
+                position: maxGapPos, 
+                color: getColorForPercentage(maxGapPos, 'custom')
+            });
+            updateGradientInputs();
+        }
+
+        function updateGradientInputs() {
+            const container = document.getElementById('gradientInputs');
+            container.innerHTML = '';
+            gradientStops.sort((a, b) => a.position - b.position);
+            
+            gradientStops.forEach((stop, i) => {
+                const div = document.createElement('div');
+                div.className = 'gradient-color-input';
+                
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.value = stop.color;
+                colorInput.onchange = (e) => {
+                    gradientStops[i].color = e.target.value;
+                    generateFrames();
+                };
+                
+                const rangeInput = document.createElement('input');
+                rangeInput.type = 'range';
+                rangeInput.min = '0';
+                rangeInput.max = '100';
+                rangeInput.value = stop.position * 100;
+                rangeInput.oninput = (e) => {
+                    gradientStops[i].position = e.target.value / 100;
+                    updateGradientInputs();
+                    generateFrames();
+                };
+                
+                const label = document.createElement('span');
+                label.className = 'range-label';
+                label.textContent = `${Math.round(stop.position * 100)}%`;
+                
+                div.appendChild(colorInput);
+                div.appendChild(rangeInput);
+                div.appendChild(label);
+                
+                if (gradientStops.length > 2) {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-stop secondary';
+                    deleteBtn.textContent = '×';
+                    deleteBtn.onclick = () => {
+                        gradientStops.splice(i, 1);
+                        updateGradientInputs();
+                        generateFrames();
+                    };
+                    div.appendChild(deleteBtn);
+                }
+                
+                container.appendChild(div);
+            });
+        }
+
+        // Frame Drawing
+        function drawFrame(ctx, size, percent, iconId, scheme) {
+            ctx.clearRect(0, 0, size, size);
+            const fillColor = getColorForPercentage(percent, scheme);
+            const emptyColor = getColorForPercentage(0, scheme);
+            
+            ctx.save();
+            if (size !== 128) {
+                ctx.scale(size/128, size/128);
+            }
+            
+            const shape = Shapes[iconId];
+            const metadata = Shapes.metadata[iconId];
+            
+            if (metadata?.type === 'fill') {
+                shape(ctx, percent, emptyColor, fillColor);
+            } else {
+                ctx.globalAlpha = percent;
+                shape(ctx);
+            }
+            
+            ctx.restore();
+        }
+
+        function drawContainerFrame(size, containerCount, fillStyle, emptyDisplay, layout, spacing, iconId, scheme, frameIndex, totalFrames) {
+            const progress = frameIndex / (totalFrames - 1);
+            const totalFill = progress * containerCount;
+            
+            let canvasWidth, canvasHeight;
+            if (layout === 'horizontal') {
+                canvasWidth = (size * containerCount) + (spacing * (containerCount - 1));
+                canvasHeight = size;
+            } else if (layout === 'vertical') {
+                canvasWidth = size;
+                canvasHeight = (size * containerCount) + (spacing * (containerCount - 1));
+            } else {
+                const cols = Math.ceil(Math.sqrt(containerCount));
+                const rows = Math.ceil(containerCount / cols);
+                canvasWidth = (size * cols) + (spacing * (cols - 1));
+                canvasHeight = (size * rows) + (spacing * (rows - 1));
+            }
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            const ctx = canvas.getContext('2d');
+            
+            for (let i = 0; i < containerCount; i++) {
+                let x, y;
+                
+                if (layout === 'horizontal') {
+                    x = i * (size + spacing);
+                    y = 0;
+                } else if (layout === 'vertical') {
+                    x = 0;
+                    y = i * (size + spacing);
+                } else {
+                    const cols = Math.ceil(Math.sqrt(containerCount));
+                    const col = i % cols;
+                    const row = Math.floor(i / cols);
+                    x = col * (size + spacing);
+                    y = row * (size + spacing);
+                }
+                
+                let containerFill = 0;
+                
+                if (fillStyle === 'complete') {
+                    if (totalFill >= i + 1) {
+                        containerFill = 1;
+                    } else if (totalFill > i) {
+                        containerFill = totalFill - i;
+                    }
+                } else {
+                    if (totalFill >= i + 1) {
+                        containerFill = 1;
+                    } else if (totalFill > i) {
+                        containerFill = totalFill - i;
+                    }
+                }
+                
+                if (emptyDisplay === 'hide' && containerFill === 0) continue;
+                
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = size;
+                tempCanvas.height = size;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                drawFrame(tempCtx, size, containerFill, iconId, scheme);
+                ctx.drawImage(tempCanvas, x, y);
+            }
+            
+            return canvas;
+        }
+
+        // Frame Generation
+        function generateFrames() {
+            const frameCount = parseInt(document.getElementById('frameCount').value);
+            const size = parseInt(document.getElementById('size').value);
+            const scheme = document.getElementById('colorScheme').value;
+            
+            frames = [];
+            const grid = document.getElementById('frameGrid');
+            grid.innerHTML = '';
+            
+            if (displayMode === 'container') {
+                const containerCount = parseInt(document.getElementById('containerCount').value);
+                const fillStyle = document.getElementById('fillStyle').value;
+                const emptyDisplay = document.getElementById('emptyDisplay').value;
+                const layout = document.getElementById('containerLayout').value;
+                const spacing = parseInt(document.getElementById('containerSpacing').value);
+                
+                // Calculate sample canvas for grid sizing
+                const sampleCanvas = drawContainerFrame(size, containerCount, fillStyle, emptyDisplay, layout, spacing, currentIcon, scheme, 0, frameCount);
+                const canvasWidth = sampleCanvas.width;
+                
+                // Adjust grid columns based on canvas width
+                let gridColumns;
+                if (canvasWidth > 400) {
+                    gridColumns = 2;
+                } else if (canvasWidth > 250) {
+                    gridColumns = 3;
+                } else if (canvasWidth > 150) {
+                    gridColumns = 4;
+                } else {
+                    gridColumns = 6;
+                }
+                
+                grid.style.gridTemplateColumns = `repeat(${gridColumns}, 1fr)`;
+                
+                for (let i = 0; i < frameCount; i++) {
+                    const canvas = drawContainerFrame(size, containerCount, fillStyle, emptyDisplay, layout, spacing, currentIcon, scheme, i, frameCount);
+                    frames.push(canvas);
+                    
+                    const item = document.createElement('div');
+                    item.className = 'frame-item';
+                    item.onclick = () => SpriteFiles.downloadCanvas(canvas, `${i}.png`);
+                    
+                    const displayCanvas = document.createElement('canvas');
+                    displayCanvas.width = 120;
+                    displayCanvas.height = 120;
+                    const displayCtx = displayCanvas.getContext('2d');
+                    
+                    const scale = Math.min(120 / canvas.width, 120 / canvas.height);
+                    const scaledW = canvas.width * scale;
+                    const scaledH = canvas.height * scale;
+                    const offsetX = (120 - scaledW) / 2;
+                    const offsetY = (120 - scaledH) / 2;
+                    displayCtx.drawImage(canvas, offsetX, offsetY, scaledW, scaledH);
+                    
+                    const progress = i / (frameCount - 1);
+                    const totalFill = progress * containerCount;
+                    
+                    const label = document.createElement('div');
+                    label.className = 'frame-label';
+                    label.style.fontSize = '10px';
+                    label.textContent = `${i}.png (${totalFill.toFixed(1)}/${containerCount})`;
+                    
+                    item.appendChild(displayCanvas);
+                    item.appendChild(label);
+                    grid.appendChild(item);
+                }
+            } else {
+                // Reset grid for single mode
+                grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(120px, 1fr))';
+                
+                for (let i = 0; i < frameCount; i++) {
+                    const percent = i / (frameCount - 1);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    
+                    drawFrame(ctx, size, percent, currentIcon, scheme);
+                    frames.push(canvas);
+                    
+                    const item = document.createElement('div');
+                    item.className = 'frame-item';
+                    item.onclick = () => SpriteFiles.downloadCanvas(canvas, `${i}.png`);
+                    
+                    const displayCanvas = document.createElement('canvas');
+                    displayCanvas.width = 64;
+                    displayCanvas.height = 64;
+                    const displayCtx = displayCanvas.getContext('2d');
+                    displayCtx.drawImage(canvas, 0, 0, 64, 64);
+                    
+                    const label = document.createElement('div');
+                    label.className = 'frame-label';
+                    label.style.fontSize = '10px';
+                    label.textContent = `${i}.png (${Math.round(percent * 100)}%)`;
+                    
+                    item.appendChild(displayCanvas);
+                    item.appendChild(label);
+                    grid.appendChild(item);
+                }
+            }
+        }
+
+        // Download Functions
+        async function downloadAll() {
+            if (frames.length === 0) {
+                SpriteUI.showNotification('Generate frames first!', 'warning');
+                return;
+            }
+            try {
+                await SpriteFiles.downloadCanvasesAsZip(frames, `${currentIcon}_frames.zip`, '');
+                SpriteUI.showNotification('ZIP downloaded!', 'success');
+            } catch (err) {
+                SpriteUI.showNotification('Error: ' + err.message, 'error');
+            }
+        }
+
+        function downloadSheet() {
+            if (frames.length === 0) {
+                SpriteUI.showNotification('Generate frames first!', 'warning');
+                return;
+            }
+            
+            const sheet = document.createElement('canvas');
+            sheet.width = frames[0].width * frames.length;
+            sheet.height = frames[0].height;
+            const ctx = sheet.getContext('2d');
+            
+            frames.forEach((canvas, i) => {
+                ctx.drawImage(canvas, i * frames[0].width, 0);
+            });
+            
+            SpriteFiles.downloadCanvas(sheet, 'sprite_sheet.png');
+            SpriteUI.showNotification('Sheet downloaded!', 'success');
+        }
+
+        async function downloadWithConfig() {
+            if (frames.length === 0) {
+                SpriteUI.showNotification('Generate frames first!', 'warning');
+                return;
+            }
+            
+            const zip = new JSZip();
+            const config = SpriteConfig.generateConfig({
+                frameCount: frames.length,
+                layout: 'horizontal',
+                fps: 1.0,
+                animationMode: displayMode === 'container' ? 
+                    { state_mapping: "discrete", max_value: parseInt(document.getElementById('containerCount').value) } :
+                    { state_mapping: "percentage" }
+            });
+            
+            zip.file('sprite.json', JSON.stringify(config, null, 2));
+            
+            const sheet = document.createElement('canvas');
+            sheet.width = frames[0].width * frames.length;
+            sheet.height = frames[0].height;
+            const ctx = sheet.getContext('2d');
+            
+            frames.forEach((canvas, i) => {
+                ctx.drawImage(canvas, i * frames[0].width, 0);
+            });
+            
+            sheet.toBlob(async blob => {
+                zip.file('sheet.png', blob);
+                const content = await zip.generateAsync({type: 'blob'});
+                SpriteFiles.downloadBlob(content, `${currentIcon}_with_config.zip`);
+                SpriteUI.showNotification('Package downloaded!', 'success');
+            });
+        }
+
+        // Event Listeners
+        document.getElementById('containerCount').addEventListener('input', updateFrameCountLabel);
+        document.getElementById('fillStyle').addEventListener('change', updateFrameCountLabel);
+
+        // Initialize
+        loadPresets();
+        initIconSelector();
+        generateFrames();
+    </script>
+</body>
+</html>

@@ -1,8 +1,28 @@
-use imgui::{Context, FontSource};
+use copypasta::{ClipboardContext, ClipboardProvider};
+use imgui::{ClipboardBackend, Context, FontSource, ImString};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::time::Instant;
 use winit::event::Event;
 use winit::window::Window;
+
+struct ClipboardSupport {
+    ctx: ClipboardContext,
+}
+
+impl ClipboardSupport {
+    fn new() -> Option<Self> {
+        ClipboardContext::new().ok().map(|ctx| Self { ctx })
+    }
+}
+
+impl ClipboardBackend for ClipboardSupport {
+    fn get(&mut self) -> Option<String> {
+        self.ctx.get_contents().ok()
+    }
+    fn set(&mut self, text: &str) {
+        let _ = self.ctx.set_contents(text.to_owned());
+    }
+}
 
 pub struct ImguiContext {
     context: Context,
@@ -14,6 +34,15 @@ impl ImguiContext {
     pub fn new(window: &Window) -> Self {
         let mut context = Context::create();
         context.set_ini_filename(None);
+        context.io_mut().config_flags |= imgui::ConfigFlags::NAV_ENABLE_KEYBOARD;
+
+        // Set up clipboard support
+        if let Some(backend) = ClipboardSupport::new() {
+            context.set_clipboard_backend(backend);
+        } else {
+            eprintln!("Warning: Failed to initialize clipboard backend");
+        }
+
         context
             .fonts()
             .add_font(&[FontSource::DefaultFontData { config: None }]);

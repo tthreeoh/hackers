@@ -18,7 +18,7 @@ impl crate::HaCKS {
         let tracking_enabled = self.state_tracker.borrow().enabled;
         if tracking_enabled {
             for type_id in &sorted {
-                if let Some(_module) = self.hacs.get(&type_id) {
+                if let Some(_module) = self.get_module_by_type_id(*type_id) {
                     if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
                     {
                         tracker.qued();
@@ -27,13 +27,13 @@ impl crate::HaCKS {
             }
         }
         for type_id in &sorted {
-            if let Some(module) = self.hacs.get(&type_id) {
+            if let Some(module) = self.get_module_by_type_id(*type_id) {
                 module.borrow_mut().before_render(ui);
             }
         }
         if tracking_enabled {
             for type_id in &sorted {
-                if let Some(_module) = self.hacs.get(&type_id) {
+                if let Some(_module) = self.get_module_by_type_id(*type_id) {
                     if let Some(tracker) = self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
                     {
                         tracker.stasis();
@@ -46,7 +46,7 @@ impl crate::HaCKS {
     pub fn on_unload(&self) {
         let sorted = self.topological_sort_update();
         for type_id in sorted {
-            if let Some(module) = self.hacs.get(&type_id) {
+            if let Some(module) = self.get_module_by_type_id(type_id) {
                 module.borrow_mut().on_unload();
             }
         }
@@ -62,7 +62,7 @@ impl crate::HaCKS {
         let tracking_enabled = self.state_tracker.borrow().enabled;
         for type_id in &sorted {
             let should_update = {
-                let module = self.hacs.get(&type_id).unwrap();
+                let module = self.get_module_by_type_id(*type_id).unwrap();
                 let weight = module.borrow().update_weight();
                 match &target {
                     TickTarget::All => true,
@@ -73,7 +73,7 @@ impl crate::HaCKS {
             };
             if should_update {
                 if tracking_enabled {
-                    if let Some(_module) = self.hacs.get(&type_id) {
+                    if let Some(_module) = self.get_module_by_type_id(*type_id) {
                         if let Some(tracker) =
                             self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
                         {
@@ -86,7 +86,7 @@ impl crate::HaCKS {
 
         for type_id in &sorted {
             let should_update = {
-                let module = self.hacs.get(&type_id).unwrap();
+                let module = self.get_module_by_type_id(*type_id).unwrap();
                 let weight = module.borrow().update_weight();
                 match &target {
                     TickTarget::All => true,
@@ -97,7 +97,7 @@ impl crate::HaCKS {
             };
 
             if should_update {
-                if let Some(module) = self.hacs.get(&type_id) {
+                if let Some(module) = self.get_module_by_type_id(*type_id) {
                     // Track update lifecycle
                     if tracking_enabled {
                         if let Some(tracker) =
@@ -123,7 +123,7 @@ impl crate::HaCKS {
         if tracking_enabled {
             for type_id in &sorted {
                 let should_update = {
-                    let module = self.hacs.get(&type_id).unwrap();
+                    let module = self.get_module_by_type_id(*type_id).unwrap();
                     let weight = module.borrow().update_weight();
                     match &target {
                         TickTarget::All => true,
@@ -133,7 +133,7 @@ impl crate::HaCKS {
                     }
                 };
                 if should_update {
-                    if let Some(_module) = self.hacs.get(&type_id) {
+                    if let Some(_module) = self.get_module_by_type_id(*type_id) {
                         if let Some(tracker) =
                             self.state_tracker.borrow_mut().get_tracker_mut(&type_id)
                         {

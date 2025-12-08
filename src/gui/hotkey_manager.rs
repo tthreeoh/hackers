@@ -31,11 +31,13 @@ impl HaCKS {
             // Parse "TypeId(...)::hotkey_name"
             if let Some((type_hash, hotkey_id)) = full_id.split_once("::") {
                 // Find module by matching type_id debug string
-                for tid in self.hacs.keys() {
-                    if format!("{:?}", tid) == type_hash {
-                        if let Some(module_rc) = self.hacs.get(tid) {
-                            module_rc.borrow_mut().on_hotkey(hotkey_id);
-                        }
+                // Iterate values because keys are now names, not TypeIds
+                for module_rc in self.hacs.values() {
+                    let m = module_rc.borrow();
+                    if format!("{:?}", m.nac_type_id()) == type_hash {
+                        // drop borrow to allow mutable borrow
+                        drop(m);
+                        module_rc.borrow_mut().on_hotkey(hotkey_id);
                         break;
                     }
                 }
@@ -585,10 +587,10 @@ impl HaCKS {
     pub fn sync_all_hotkeys(&mut self) {
         let bindings: Vec<_> = self
             .hacs
-            .iter()
-            .map(|(&tid, m_rc)| {
+            .values()
+            .map(|m_rc| {
                 let m = m_rc.borrow();
-                (tid, m.metadata().hotkeys.clone())
+                (m.nac_type_id(), m.metadata().hotkeys.clone())
             })
             .collect();
 
@@ -602,7 +604,7 @@ impl HaCKS {
     /// Sync a single module's hotkeys (call after config UI changes)
     pub fn sync_module_hotkeys<T: 'static>(&mut self) {
         let tid = TypeId::of::<T>();
-        if let Some(module_rc) = self.hacs.get(&tid) {
+        if let Some(module_rc) = self.get_module_by_type_id(tid) {
             let module = module_rc.borrow();
             let bindings = module.metadata().hotkeys.clone();
             self.hotkey_manager

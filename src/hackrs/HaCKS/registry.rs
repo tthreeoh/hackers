@@ -11,10 +11,13 @@ use crate::hack::HaCK;
 
 use crate::hackrs::stable_abi::HackersModule_Ref;
 
+use libloading::Library;
+
 pub struct DynamicHaC {
     pub root_module: HackersModule_Ref,
     pub type_id: TypeId,
     pub path: String,
+    pub library: Rc<Library>, // Keep library alive
 }
 
 impl std::fmt::Debug for DynamicHaC {
@@ -97,10 +100,11 @@ impl std::fmt::Debug for DynamicHaC {
 // }
 impl crate::HaCKS {
     pub fn register<T: HaCK + 'static>(&mut self, module: T) {
-        let type_id = TypeId::of::<T>();
         let name = module.name().to_string();
+        let type_id = TypeId::of::<T>();
 
-        self.hacs.insert(type_id, Rc::new(RefCell::new(module)));
+        self.hacs
+            .insert(name.clone(), Rc::new(RefCell::new(module)));
         self.menu_dirty = true.into();
 
         // Register with state tracker
@@ -115,7 +119,7 @@ impl crate::HaCKS {
             (m_ref.nac_type_id(), m_ref.name().to_string())
         };
 
-        self.hacs.insert(type_id, module);
+        self.hacs.insert(name.clone(), module);
 
         // Register with state tracker
         self.state_tracker
@@ -125,45 +129,87 @@ impl crate::HaCKS {
 
     pub fn eject_module<T: HaCK + 'static>(&mut self) -> bool {
         let type_id = TypeId::of::<T>();
-        if let Some(module_rc) = self.hacs.remove(&type_id) {
-            module_rc.borrow_mut().on_unload();
-            self.menu_dirty = true.into();
+        // Find key by TypeId
+        let key = self.hacs.iter().find_map(|(k, v)| {
+            if v.borrow().nac_type_id() == type_id {
+                Some(k.clone())
+            } else {
+                None
+            }
+        });
 
-            // Unregister from state tracker
-            self.state_tracker.borrow_mut().unregister_module(&type_id);
+        if let Some(k) = key {
+            if let Some(module_rc) = self.hacs.remove(&k) {
+                module_rc.borrow_mut().on_unload();
+                self.menu_dirty = true.into();
 
-            true
-        } else {
-            false
+                // Unregister from state tracker
+                self.state_tracker.borrow_mut().unregister_module(&type_id);
+
+                return true;
+            }
         }
+        false
     }
 
     pub fn eject_module_by_id(&mut self, type_id: TypeId) -> bool {
-        if let Some(module_rc) = self.hacs.remove(&type_id) {
-            module_rc.borrow_mut().on_unload();
-            self.menu_dirty = true.into();
-            true
-        } else {
-            false
+        // Find key by TypeId
+        let key = self.hacs.iter().find_map(|(k, v)| {
+            if v.borrow().nac_type_id() == type_id {
+                Some(k.clone())
+            } else {
+                None
+            }
+        });
+
+        if let Some(k) = key {
+            if let Some(module_rc) = self.hacs.remove(&k) {
+                module_rc.borrow_mut().on_unload();
+                self.menu_dirty = true.into();
+                return true;
+            }
         }
+        false
     }
 
     pub fn get<T: HaCK + 'static>(&self) -> Option<std::cell::Ref<'_, T>> {
-        self.hacs
-            .get(&TypeId::of::<T>())
-            .map(|rc| std::cell::Ref::map(rc.borrow(), |m| m.as_any().downcast_ref::<T>().unwrap()))
+        // Warning: O(N) lookup by type
+        // This is safe but slower than O(1)
+        self.hacs.values().find_map(|rc| {
+            let borrow = rc.borrow();
+            if borrow.nac_type_id() == TypeId::of::<T>() {
+                Some(std::cell::Ref::map(borrow, |m| {
+                    m.as_any().downcast_ref::<T>().unwrap()
+                }))
+            } else {
+                None
+            }
+        })
     }
 
     pub fn get_mut<T: HaCK + 'static>(&self) -> Option<std::cell::RefMut<'_, T>> {
-        self.hacs.get(&TypeId::of::<T>()).map(|rc| {
-            std::cell::RefMut::map(rc.borrow_mut(), |m| {
-                m.as_any_mut().downcast_mut::<T>().unwrap()
-            })
+        // Warning: O(N) lookup by type
+        self.hacs.values().find_map(|rc| {
+            // Check type without keeping borrow
+            let is_match = rc.borrow().nac_type_id() == TypeId::of::<T>();
+            if is_match {
+                Some(std::cell::RefMut::map(rc.borrow_mut(), |m| {
+                    m.as_any_mut().downcast_mut::<T>().unwrap()
+                }))
+            } else {
+                None
+            }
         })
     }
 
     pub fn get_mut_by_id(&self, id: TypeId) -> Option<std::cell::RefMut<'_, dyn HaCK>> {
-        self.hacs.get(&id).map(|rc| rc.borrow_mut())
+        self.hacs.values().find_map(|rc| {
+            if rc.borrow().nac_type_id() == id {
+                Some(rc.borrow_mut())
+            } else {
+                None
+            }
+        })
     }
 
     pub fn hacs(&self) -> impl Iterator<Item = std::cell::Ref<'_, dyn HaCK>> + '_ {
@@ -181,102 +227,98 @@ impl crate::HaCKS {
     ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::hackrs::stable_abi::ForeignHaCK;
         use crate::hackrs::stable_abi::HackersModule_Ref;
-        use abi_stable::library::RootModule;
+        // use abi_stable::library::RootModule; // Not needed
 
         // Get path as string for duplicate checking and storage
         let path_buf = path.as_ref().to_path_buf();
         let path_str = path_buf.to_string_lossy().to_string();
 
-        // Check if already loaded
-        for lib in &self.loaded_libs {
+        // Check if already loaded by path in loaded_libs hashmap
+        for lib in self.loaded_libs.borrow().values() {
             if lib.path == path_str {
-                println!("Plugin already loaded: {}", path_str);
+                println!("Plugin already loaded from path: {}", path_str);
                 return Ok(());
             }
         }
 
-        // Load the module
-        // We use unsafe because loading code is inherently unsafe as it executes arbitrary code.
-        let root_module = unsafe { HackersModule_Ref::load_from_file(path.as_ref()) }?;
+        // Load multiple copies of the same library logic
+        // We use libloading directly to control the lifetime and bypass name caching
+        let library = Rc::new(unsafe { libloading::Library::new(path.as_ref())? });
+
+        // Load the LibHeader source explicitly
+        let header: &abi_stable::library::LibHeader = unsafe {
+            let sym_name = abi_stable::library::ROOT_MODULE_LOADER_NAME;
+            // libloading expects bytes (without null terminator if os specific? No, standard is bytes)
+            // But ROOT_MODULE_LOADER_NAME is a string.
+            let sym: libloading::Symbol<&abi_stable::library::LibHeader> =
+                library.get(sym_name.as_bytes())?;
+            *sym
+        };
+
+        // Initialize the root module
+        let root_module = unsafe { header.init_root_module::<HackersModule_Ref>() }?;
 
         // Create the HaCK instance
         let stable_hack = root_module.create_hack()();
 
-        // Wrap it in ForeignHaCK with default metadata
-        let foreign_hack = ForeignHaCK {
-            inner: stable_hack,
-            metadata: crate::hackrs::HaCMetadata {
-                name: std::borrow::Cow::Borrowed("ForeignModule"),
-                description: std::borrow::Cow::Borrowed("External DLL Module"),
-                category: std::borrow::Cow::Borrowed("External"),
-                hotkeys: vec![],
-                menu_weight: 0.0,
-                window_weight: 0.0,
-                draw_weight: 0.0,
-                update_weight: 0.0,
-                visible_in_gui: true,
-                is_menu_enabled: true,
-                is_window_enabled: true,
-                is_render_enabled: false,
-                is_update_enabled: true,
-                auto_resize_window: true,
-                window_pos: [0.0, 0.0],
-                window_size: [0.0, 0.0],
-                access_control: crate::access::AccessControl::new(
-                    crate::access::AccessLevel::ReadWrite,
-                ),
-            },
-        };
-        let type_id = std::any::TypeId::of::<ForeignHaCK>(); // This is just a placeholder typeid since all ForeignHaCKs share the same wrapper type.
-                                                             // We might need a unique ID for each loaded module if we want them distinct in HashMap?
-                                                             // But HashMap key is TypeId.
-                                                             // If we load multiple DLLs, they will all be ForeignHaCK.
-                                                             // We should wrap ForeignHaCK in another struct or use a mapping?
-                                                             // Actually, the registry uses `TypeId` of the `HaCK` generic K.
-                                                             // If all dynamic modules are `ForeignHaCK`, we can only have one active?
-                                                             // That's a limitation of current architecture.
-                                                             // We can create a unique wrapper type per load? Not possible at runtime.
-                                                             // We can change `hacs` map to key by `String` (Name) instead of `TypeId`?
-                                                             // `hacs: HashMap<TypeId, Rc<RefCell<dyn HaCK>>>`.
-
-        // For now, let's assume one dynamic module or that we only need one "ForeignHaCK" type.
-        // To support multiple, we would need to redesign HaCKS to not rely solely on static TypeId for storage,
-        // or use `Box<dyn HaCK>` and store by Name.
-
-        // However, `register_boxed` uses `nac_type_id()` which returns `ForeignHaCK`'s type ID.
-        // So yes, multiple DLLs will conflict if they use the same ForeignHaCK wrapper.
-        // But we can still load it and see if it works for one.
+        // Wrap in ForeignHaCK
+        let foreign_hack = ForeignHaCK::new(stable_hack);
 
         let name = foreign_hack.inner.name().to_string();
+        let type_id = foreign_hack.nac_type_id();
 
-        // Store path and library
-        self.loaded_libs.push(DynamicHaC {
-            root_module,
-            type_id,
-            path: path_str,
-        });
+        // Check if module with same name already exists in main registry
+        if self.hacs.contains_key(&name) {
+            return Err(format!(
+                "Module with name '{}' already registered. Cannot load duplicate from '{}'",
+                name, path_str
+            )
+            .into());
+        }
 
-        // Store in dynamic_modules vector for multi-DLL support
-        self.dynamic_modules
-            .push(Rc::new(RefCell::new(foreign_hack)));
+        // Insert into hacs registry
+        self.hacs
+            .insert(name.clone(), Rc::new(RefCell::new(foreign_hack)));
+        self.menu_dirty = true.into();
+
+        // Track in loaded_libs map
+        self.loaded_libs.borrow_mut().insert(
+            name.clone(),
+            DynamicHaC {
+                root_module,
+                type_id,
+                path: path_str.clone(),
+                library,
+            },
+        );
+
+        println!("Loaded dynamic module '{}' from: {}", name, path_str);
 
         Ok(())
     }
 
-    /// Unload a dynamic module by index
-    pub fn unload_dynamic(&mut self, index: usize) -> Result<(), Box<dyn std::error::Error>> {
-        if index >= self.dynamic_modules.len() {
-            return Err("Index out of bounds".into());
+    /// Unload a dynamic module by name
+    pub fn unload_dynamic(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut loaded_libs = self.loaded_libs.borrow_mut();
+
+        if !loaded_libs.contains_key(name) {
+            return Err(format!("Plugin '{}' not found in loaded libraries", name).into());
         }
 
-        // Call on_unload before removing
-        self.dynamic_modules[index].borrow_mut().on_unload();
-
-        // Remove from both vectors
-        self.dynamic_modules.remove(index);
-        if index < self.loaded_libs.len() {
-            self.loaded_libs.remove(index);
+        // Remove from hacs
+        if let Some(module_rc) = self.hacs.remove(name) {
+            module_rc.borrow_mut().on_unload();
+            self.menu_dirty = true.into();
+            println!("Unloaded dynamic module '{}'", name);
+        } else {
+            println!(
+                "Warning: Module '{}' found in loaded_libs but not in main registry",
+                name
+            );
         }
+
+        // Remove from loaded_libs
+        loaded_libs.remove(name);
 
         Ok(())
     }
@@ -311,15 +353,19 @@ impl crate::HaCKS {
         Ok(loaded_count)
     }
 
-    /// Reload a dynamic module by index
-    pub fn reload_dynamic(&mut self, index: usize) -> Result<(), Box<dyn std::error::Error>> {
-        if index >= self.loaded_libs.len() {
-            return Err("Index out of bounds".into());
-        }
+    /// Reload a dynamic module by name
+    pub fn reload_dynamic(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // if index >= self.loaded_libs.len() {
+        //     return Err("Index out of bounds".into());
+        // }
 
         // Get the library path (we need to store this)
         // For now, this is a limitation - we can't reload without knowing the path
-        Err("Reload not yet implemented - path tracking needed".into())
+        Err(format!(
+            "Reload not yet implemented for '{}' - path tracking needed",
+            name
+        )
+        .into())
     }
 
     // pub fn reload_module<P: AsRef<Path>>(&mut self, path: P, type_id: TypeId) -> Result<()> {

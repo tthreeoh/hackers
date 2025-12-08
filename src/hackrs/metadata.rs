@@ -1,5 +1,6 @@
 use crate::access::{AccessControl, AccessLevel};
 use crate::gui::Key;
+use abi_stable::StableAbi;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::time::Duration;
@@ -80,6 +81,12 @@ impl HotkeyBinding {
         Duration::from_millis(self.cooldown_ms)
     }
 }
+#[repr(u32)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, StableAbi)]
+pub enum HaCKLoadType {
+    Internal,
+    Plugin,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct HaCMetadata {
@@ -104,6 +111,7 @@ pub struct HaCMetadata {
     pub auto_resize_window: bool,
     #[serde(default)]
     pub access_control: AccessControl,
+    pub load_type: HaCKLoadType,
 }
 
 impl Default for HaCMetadata {
@@ -126,6 +134,7 @@ impl Default for HaCMetadata {
             window_pos: default_window_pos(),
             window_size: default_window_size(),
             access_control: AccessControl::new(AccessLevel::ReadWrite),
+            load_type: HaCKLoadType::Internal,
         }
     }
 }

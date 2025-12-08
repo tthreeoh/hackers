@@ -1,6 +1,8 @@
 pub mod debug;
 pub mod hackrs;
 pub mod macros;
+#[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
+pub mod sprites;
 pub mod state_tracker;
 #[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
 pub mod structview;
@@ -18,6 +20,8 @@ pub use hackrs::*;
 #[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
 pub use impl_backends::*;
 pub use serde_json;
+#[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
+pub use sprites::*;
 pub use state_tracker::*;
 #[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
 pub use structview::{FieldInfo, FieldMeta, StructViewer};

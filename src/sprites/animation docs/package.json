@@ -1,0 +1,11 @@
+{
+    "name": "sprite-animation-docs",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "node build-manifest.js && node generate-static-index.js",
+      "build:manifest": "node build-manifest.js",
+      "build:index": "node generate-static-index.js",
+      "dev": "npm run build && python -m http.server 8000",
+      "watch": "nodemon --watch . --ext md,html,json --ignore docs-manifest.json --ignore index.html --exec \"node build-manifest.js && node generate-static-index.js\""
+    }
+  }

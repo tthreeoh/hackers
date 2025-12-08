@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../shared/shared-styles.css">
+    <script src="../shared/shared.js"></script>
+    <title>Sprite Port Helper</title>
+    <style>
+        .code-section {
+            margin: 2rem 0;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .copy-btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        .copy-btn.copied {
+            background: var(--accent-success);
+        }
+
+        pre {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🦀 Sprite Port Helper</h1>
+        <p>Generate sprite.json and Rust code snippets</p>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h2>Configuration</h2>
+            
+            <div class="control-group">
+                <label>Sprite Name (folder name):</label>
+                <input type="text" id="spriteName" placeholder="FrozenOrb" value="FrozenOrb">
+            </div>
+
+            <div class="control-group">
+                <label>Layout:</label>
+                <select id="layout" onchange="updateGridVisibility()">
+                    <option value="horizontal">Horizontal Strip</option>
+                    <option value="vertical">Vertical Strip</option>
+                    <option value="grid">Grid</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label>Frame Count:</label>
+                <input type="number" id="frameCount" min="1" value="14">
+            </div>
+            
+            <div class="control-group" id="gridColumnControl" style="display: none;">
+                <label>Grid Columns:</label>
+                <input type="number" id="gridColumns" min="1" value="4">
+            </div>
+
+            <div class="control-group">
+                <label>FPS:</label>
+                <input type="number" id="fps" min="1" step="0.5" value="15.0">
+            </div>
+
+            <div class="control-group">
+                <label>Speed Multiplier:</label>
+                <input type="number" id="speed" min="0.1" step="0.1" value="1.0">
+            </div>
+
+            <button onclick="generateOutput()">Generate Code</button>
+        </div>
+
+        <div class="card" id="outputSection" style="display: none;">
+            <div class="code-section">
+                <div class="code-header">
+                    <h3>sprite.json</h3>
+                    <button class="copy-btn" onclick="copyCode('jsonCode')">📋 Copy</button>
+                </div>
+                <pre><code id="jsonCode"></code></pre>
+            </div>
+
+            <div class="code-section">
+                <div class="code-header">
+                    <h3>Rust Loader Code</h3>
+                    <button class="copy-btn" onclick="copyCode('rustCode')">📋 Copy</button>
+                </div>
+                <pre><code id="rustCode"></code></pre>
+            </div>
+
+            <div style="text-align: center; margin-top: 2rem;">
+                <button onclick="downloadJSON()">💾 Download sprite.json</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateGridVisibility() {
+            const layout = document.getElementById('layout').value;
+            document.getElementById('gridColumnControl').style.display = 
+                layout === 'grid' ? 'block' : 'none';
+        }
+
+        function generateOutput() {
+            const spriteName = document.getElementById('spriteName').value || 'sprite';
+            const layout = document.getElementById('layout').value;
+            const frameCount = parseInt(document.getElementById('frameCount').value);
+            const gridColumns = parseInt(document.getElementById('gridColumns').value);
+            const fps = parseFloat(document.getElementById('fps').value);
+            const speed = parseFloat(document.getElementById('speed').value);
+
+            // Generate sprite.json
+            const config = {
+                frame_count: frameCount,
+                fps: fps,
+                layout: layout
+            };
+
+            if (layout === 'grid') {
+                config.grid_columns = gridColumns;
+            }
+
+            if (speed !== 1.0) {
+                config.speed = speed;
+            }
+
+            document.getElementById('jsonCode').textContent = 
+                JSON.stringify(config, null, 2);
+
+            // Generate Rust code
+            let layoutType;
+            if (layout === 'horizontal') {
+                layoutType = 'HorizontalStrip';
+            } else if (layout === 'vertical') {
+                layoutType = 'VerticalStrip';
+            } else {
+                layoutType = `Grid { columns: ${gridColumns} }`;
+            }
+
+            const rustCode = `// Load ${spriteName} sprite
+// Place files in: assets/images/[category]/${spriteName}/
+
+// Option 1: With sprite.json (recommended)
+ImageLoader::load_frames(
+    base_paths,
+    "${spriteName}",
+    ${frameCount}, // frame_count (can be 0 to auto-detect from sprite.json)
+    game_loader,
+    Some(SpriteSheetLayout::${layoutType})
+);
+
+// Option 2: Individual numbered frames (0.png, 1.png, ...)
+// No sprite.json needed - just place numbered PNG files
+ImageLoader::load_frames(
+    base_paths,
+    "${spriteName}",
+    0, // auto-detect from file count
+    game_loader,
+    None // no sheet layout
+);
+
+// Expected folder structure:
+// ${spriteName}/
+//   ├── sprite.json (optional but recommended)
+//   └── sheet.png     OR    0.png, 1.png, 2.png, ...`;
+
+            document.getElementById('rustCode').textContent = rustCode;
+
+            document.getElementById('outputSection').style.display = 'block';
+        }
+
+        function copyCode(elementId) {
+            const code = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        function downloadJSON() {
+            const code = document.getElementById('jsonCode').textContent;
+            const blob = new Blob([code], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sprite.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Generate initial output
+        generateOutput();
+    </script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+{
+  "animation": {
+    "title": "Animation System",
+    "icon": "🎨",
+    "order": 1,
+    "files": [
+      {
+        "name": "developer-guide.md",
+        "title": "Developer Guide",
+        "type": "markdown"
+      },
+      {
+        "name": "overview.md",
+        "title": "Overview",
+        "type": "markdown"
+      }
+    ]
+  },
+  "api": {
+    "title": "API Reference",
+    "icon": "⚙️",
+    "order": 4,
+    "files": [
+      {
+        "name": "api-reference.md",
+        "title": "Api Reference",
+        "type": "markdown"
+      }
+    ]
+  },
+  "guides": {
+    "title": "Guides",
+    "icon": "📖",
+    "order": 3,
+    "files": [
+      {
+        "name": "examples.md",
+        "title": "Examples",
+        "type": "markdown"
+      },
+      {
+        "name": "migration-guide.md",
+        "title": "Migration Guide",
+        "type": "markdown"
+      },
+      {
+        "name": "sprite-config.md",
+        "title": "Sprite Config",
+        "type": "markdown"
+      },
+      {
+        "name": "user-guide.md",
+        "title": "User Guide",
+        "type": "markdown"
+      }
+    ]
+  },
+  "tools": {
+    "title": "Tools",
+    "icon": "🛠️",
+    "order": 2,
+    "files": [
+      {
+        "name": "shape-globe-generator.html",
+        "title": "Shape Globe Generator",
+        "type": "html"
+      },
+      {
+        "name": "shape-library.html",
+        "title": "Shape Library",
+        "type": "html"
+      },
+      {
+        "name": "sheet-analyzer.html",
+        "title": "Sheet Analyzer",
+        "type": "html"
+      },
+      {
+        "name": "sprite-config-generator.html",
+        "title": "Sprite Config Generator",
+        "type": "html"
+      }
+    ]
+  }
+}

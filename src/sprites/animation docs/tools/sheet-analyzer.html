@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="../shared/shared-styles.css">
+        <script src="../shared/shared.js"></script>
+        <title>Sprite Sheet Analyzer</title>
+        <style>
+            /* Page-specific styles */
+            .upload-label span {
+                font-size: 1.125rem;
+                font-weight: 600;
+                display: block;
+                margin-bottom: 0.5rem;
+            }
+            
+            .dimensions {
+                background: var(--bg-tertiary);
+                border-radius: 0.5rem;
+                padding: 1rem;
+            }
+            
+            .code-box {
+                background: #000;
+                border-radius: var(--radius-md);
+                padding: 1rem;
+                margin-top: 1rem;
+                overflow-x: auto;
+            }
+            
+            .code-box .label {
+                color: var(--text-muted);
+                font-size: 0.875rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            .placeholder {
+                background: var(--bg-secondary);
+                border-radius: 0.5rem;
+                padding: 3rem;
+                text-align: center;
+            }
+            
+            .placeholder-text {
+                color: var(--text-muted);
+                font-size: 1.125rem;
+            }
+            
+            #grid-columns-control {
+                display: none;
+            }
+            
+            #grid-columns-control.visible {
+                display: block;
+            }
+        </style>
+    </head>
+<body>
+    <div class="container">
+        <h1>Sprite Sheet Analyzer</h1>
+        
+        <!-- Upload Section -->
+        <div class="card">
+            <label class="upload-label">
+                <span>Upload Sprite Sheet or GIF:</span>
+                <input type="file" id="imageUpload" accept="image/*,.gif">
+            </label>
+            <button id="reloadBtn" style="display: none;">Reload Current Image</button>
+            <div id="gifInfo" style="margin-top: 1rem; padding: 1rem; background: #374151; border-radius: 0.375rem; display: none;">
+                <div style="color: #4ade80; font-weight: bold; margin-bottom: 0.5rem;">GIF Detected!</div>
+                <div id="gifDetails" style="color: #9ca3af; font-size: 0.875rem;"></div>
+                <button id="extractFramesBtn" style="margin-top: 0.5rem;">Extract Frames to Sheet</button>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="card" id="controls" style="display: none;">
+            <h2>Configuration</h2>
+            
+            <div class="controls">
+                <div>
+                    <label for="layout">Layout:</label>
+                    <select id="layout">
+                        <option value="horizontal">Horizontal Strip</option>
+                        <option value="vertical">Vertical Strip</option>
+                        <option value="grid">Grid</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="frameCount">Frame Count:</label>
+                    <input type="number" id="frameCount" min="1" max="100" value="8">
+                </div>
+            </div>
+
+            <div id="grid-columns-control">
+                <label for="gridColumns">Grid Columns:</label>
+                <input type="number" id="gridColumns" min="1" max="20" value="4">
+            </div>
+
+            <!-- Dimensions Display -->
+            <div class="dimensions">
+                <h3>Calculated Dimensions:</h3>
+                
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Sheet Size</div>
+                        <div class="stat-value" id="sheetSize">-</div>
+                    </div>
+                    
+                    <div class="stat-box">
+                        <div class="stat-label">Individual Frame Size</div>
+                        <div class="stat-value" id="frameSize">-</div>
+                    </div>
+                </div>
+
+                <!-- Save/Load Config -->
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                    <button id="saveConfigBtn">Save sprite.json</button>
+                    <button id="loadConfigBtn">Load sprite.json</button>
+                    <input type="file" id="configUpload" accept=".json" style="display: none;">
+                </div>
+
+                <!-- Rust Code -->
+                <div class="code-box">
+                    <div class="label">Rust Configuration:</div>
+                    <pre id="rustCode"></pre>
+                </div>
+
+                <!-- JSON Config -->
+                <div class="code-box">
+                    <div class="label">sprite.json (will be saved):</div>
+                    <pre id="jsonCode"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Canvas Display -->
+        <div class="card" id="preview" style="display: none;">
+            <h2>Preview (with grid overlay)</h2>
+            <div class="canvas-container">
+                <canvas id="canvas"></canvas>
+            </div>
+            <p class="help-text">
+                Green lines show where frames will be split. Adjust frame count if the divisions don't line up.
+            </p>
+        </div>
+
+        <!-- Placeholder -->
+        <div class="placeholder" id="placeholder">
+            <div class="placeholder-text">
+                Upload a sprite sheet to analyze its dimensions
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+    <script>
+        let currentImage = null;
+        let dimensions = null;
+        let currentFile = null;
+        let isGif = false;
+        let gifFrames = [];
+        let gifDelays = [];
+
+        const imageUpload = document.getElementById('imageUpload');
+        const reloadBtn = document.getElementById('reloadBtn');
+        const saveConfigBtn = document.getElementById('saveConfigBtn');
+        const loadConfigBtn = document.getElementById('loadConfigBtn');
+        const configUpload = document.getElementById('configUpload');
+        const extractFramesBtn = document.getElementById('extractFramesBtn');
+        const gifInfo = document.getElementById('gifInfo');
+        const gifDetails = document.getElementById('gifDetails');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const layoutSelect = document.getElementById('layout');
+        const frameCountInput = document.getElementById('frameCount');
+        const gridColumnsInput = document.getElementById('gridColumns');
+        const gridColumnsControl = document.getElementById('grid-columns-control');
+        
+        const controls = document.getElementById('controls');
+        const preview = document.getElementById('preview');
+        const placeholder = document.getElementById('placeholder');
+
+        imageUpload.addEventListener('change', handleImageUpload);
+        reloadBtn.addEventListener('click', reloadImage);
+        saveConfigBtn.addEventListener('click', saveConfig);
+        loadConfigBtn.addEventListener('click', () => configUpload.click());
+        configUpload.addEventListener('change', loadConfig);
+        extractFramesBtn.addEventListener('click', extractGifFrames);
+        layoutSelect.addEventListener('change', updateDisplay);
+        frameCountInput.addEventListener('input', updateDisplay);
+        gridColumnsInput.addEventListener('input', updateDisplay);
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            currentFile = file;
+            
+            // Check if it's a GIF
+            if (file.type === 'image/gif') {
+                isGif = true;
+                parseGif(file);
+            } else {
+                isGif = false;
+                gifInfo.style.display = 'none';
+                loadImageFromFile(file);
+            }
+        }
+
+        function parseGif(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const arrayBuffer = e.target.result;
+                const gifData = parseGifData(new Uint8Array(arrayBuffer));
+                
+                if (gifData) {
+                    gifFrames = gifData.frames;
+                    gifDelays = gifData.delays;
+                    
+                    const avgDelay = gifDelays.reduce((a, b) => a + b, 0) / gifDelays.length;
+                    const fps = Math.round(1000 / avgDelay * 10) / 10;
+                    
+                    gifDetails.innerHTML = `
+                        <div>Frames: ${gifFrames.length}</div>
+                        <div>Average delay: ${Math.round(avgDelay)}ms</div>
+                        <div>Calculated FPS: ${fps}</div>
+                    `;
+                    
+                    gifInfo.style.display = 'block';
+                    
+                    // Show first frame as preview
+                    loadImageFromDataUrl(gifFrames[0]);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function parseGifData(data) {
+            // Simple GIF parser - extracts frames and delays
+            let pos = 0;
+            const frames = [];
+            const delays = [];
+            
+            // Check GIF signature
+            const sig = String.fromCharCode(...data.slice(0, 6));
+            if (!sig.startsWith('GIF')) return null;
+            
+            pos = 13; // Skip header
+            
+            // Parse through GIF blocks
+            while (pos < data.length) {
+                if (data[pos] === 0x21) { // Extension
+                    if (data[pos + 1] === 0xF9) { // Graphic Control Extension
+                        const delay = data[pos + 4] | (data[pos + 5] << 8);
+                        delays.push(delay * 10); // Convert to ms
+                    }
+                    // Skip extension
+                    pos += 2;
+                    while (data[pos] !== 0x00) {
+                        pos += data[pos] + 1;
+                    }
+                    pos++;
+                } else if (data[pos] === 0x2C) { // Image descriptor
+                    // For simplicity, we'll just use canvas to extract frames
+                    // This basic parser just gets frame count and timing
+                    frames.push(null); // Placeholder
+                    pos++;
+                    pos += 9; // Skip image descriptor
+                    if (data[pos - 1] & 0x80) {
+                        const colorTableSize = 2 << (data[pos - 1] & 0x07);
+                        pos += colorTableSize * 3;
+                    }
+                    pos++; // LZW code size
+                    while (data[pos] !== 0x00) {
+                        pos += data[pos] + 1;
+                    }
+                    pos++;
+                } else if (data[pos] === 0x3B) { // Trailer
+                    break;
+                } else {
+                    pos++;
+                }
+            }
+            
+            // Actually extract frames using canvas
+            const img = new Image();
+            const dataUrl = 'data:image/gif;base64,' + btoa(String.fromCharCode(...data));
+            
+            return new Promise((resolve) => {
+                img.onload = () => {
+                    const tempCanvas = document.createElement('canvas');
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCanvas.width = img.width;
+                    tempCanvas.height = img.height;
+                    
+                    // For animated GIFs, we can only get the first frame easily
+                    tempCtx.drawImage(img, 0, 0);
+                    const frameData = tempCanvas.toDataURL();
+                    
+                    resolve({
+                        frames: [frameData], // In reality, extracting all frames requires a library
+                        delays: delays.length > 0 ? delays : [100],
+                        width: img.width,
+                        height: img.height
+                    });
+                };
+                img.src = dataUrl;
+            }).then(result => {
+                gifFrames = result.frames;
+                gifDelays = result.delays;
+                
+                const avgDelay = gifDelays.reduce((a, b) => a + b, 0) / gifDelays.length;
+                const fps = Math.round(1000 / avgDelay * 10) / 10;
+                
+                gifDetails.innerHTML = `
+                    <div>Frames detected: ${delays.length || 'Unknown'}</div>
+                    <div>Average delay: ${Math.round(avgDelay)}ms</div>
+                    <div>Calculated FPS: ${fps}</div>
+                    <div style="color: #fbbf24; margin-top: 0.5rem;">Note: Frame extraction from GIF is limited in browser. Best results: convert GIF to sprite sheet externally or use individual PNG frames.</div>
+                `;
+            });
+            
+            return null; // Will be resolved async
+        }
+
+        function extractGifFrames() {
+            alert('GIF frame extraction is limited in the browser. For best results:\n\n1. Use a tool like ImageMagick to convert GIF to sprite sheet:\n   convert animation.gif +append sheet.png\n\n2. Or export individual frames as PNGs and use them directly.\n\nThe tool has detected timing information that you can use for the FPS setting.');
+        }
+
+        function reloadImage() {
+            if (!currentFile) return;
+            if (isGif) {
+                parseGif(currentFile);
+            } else {
+                loadImageFromFile(currentFile);
+            }
+        }
+
+        function loadImageFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                loadImageFromDataUrl(event.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function loadImageFromDataUrl(dataUrl) {
+            const img = new Image();
+            img.onload = () => {
+                currentImage = img;
+                dimensions = {
+                    width: img.width,
+                    height: img.height
+                };
+                
+                placeholder.style.display = 'none';
+                controls.style.display = 'block';
+                preview.style.display = 'block';
+                reloadBtn.style.display = 'inline-block';
+                
+                updateDisplay();
+            };
+            img.src = dataUrl;
+        }
+
+        function updateDisplay() {
+            if (!currentImage || !dimensions) return;
+
+            const layout = layoutSelect.value;
+            const frameCount = parseInt(frameCountInput.value) || 1;
+            const gridColumns = parseInt(gridColumnsInput.value) || 4;
+
+            // Show/hide grid columns input
+            if (layout === 'grid') {
+                gridColumnsControl.classList.add('visible');
+            } else {
+                gridColumnsControl.classList.remove('visible');
+            }
+
+            drawCanvas(currentImage, layout, frameCount, gridColumns);
+            updateStats(layout, frameCount, gridColumns);
+        }
+
+        function drawCanvas(img, layout, frameCount, gridColumns) {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+
+            // Draw grid lines
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+
+            if (layout === 'horizontal') {
+                const frameWidth = img.width / frameCount;
+                for (let i = 1; i < frameCount; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * frameWidth, 0);
+                    ctx.lineTo(i * frameWidth, img.height);
+                    ctx.stroke();
+                }
+            } else if (layout === 'vertical') {
+                const frameHeight = img.height / frameCount;
+                for (let i = 1; i < frameCount; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * frameHeight);
+                    ctx.lineTo(img.width, i * frameHeight);
+                    ctx.stroke();
+                }
+            } else if (layout === 'grid') {
+                const rows = Math.ceil(frameCount / gridColumns);
+                const frameWidth = img.width / gridColumns;
+                const frameHeight = img.height / rows;
+
+                // Vertical lines
+                for (let i = 1; i < gridColumns; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * frameWidth, 0);
+                    ctx.lineTo(i * frameWidth, img.height);
+                    ctx.stroke();
+                }
+
+                // Horizontal lines
+                for (let i = 1; i < rows; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * frameHeight);
+                    ctx.lineTo(img.width, i * frameHeight);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function updateStats(layout, frameCount, gridColumns) {
+            let frameWidth, frameHeight;
+
+            if (layout === 'horizontal') {
+                frameWidth = Math.floor(dimensions.width / frameCount);
+                frameHeight = dimensions.height;
+            } else if (layout === 'vertical') {
+                frameWidth = dimensions.width;
+                frameHeight = Math.floor(dimensions.height / frameCount);
+            } else if (layout === 'grid') {
+                const rows = Math.ceil(frameCount / gridColumns);
+                frameWidth = Math.floor(dimensions.width / gridColumns);
+                frameHeight = Math.floor(dimensions.height / rows);
+            }
+
+            document.getElementById('sheetSize').textContent = 
+                `${dimensions.width} × ${dimensions.height}`;
+            document.getElementById('frameSize').textContent = 
+                `${frameWidth} × ${frameHeight}`;
+
+            updateRustCode(layout, frameCount, frameWidth, frameHeight, gridColumns);
+            updateJsonCode(layout, frameCount, gridColumns);
+        }
+
+        function saveConfig() {
+            const layout = layoutSelect.value;
+            const frameCount = parseInt(frameCountInput.value) || 1;
+            const gridColumns = parseInt(gridColumnsInput.value) || 4;
+
+            const config = {
+                frame_count: frameCount,
+                fps: 4.0,
+                layout: layout
+            };
+
+            if (layout === 'grid') {
+                config.grid_columns = gridColumns;
+            }
+
+            const jsonStr = JSON.stringify(config, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sprite.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadConfig(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const config = JSON.parse(event.target.result);
+                    
+                    if (config.frame_count) {
+                        frameCountInput.value = config.frame_count;
+                    }
+                    
+                    if (config.layout) {
+                        layoutSelect.value = config.layout;
+                    }
+                    
+                    if (config.grid_columns && config.layout === 'grid') {
+                        gridColumnsInput.value = config.grid_columns;
+                    }
+                    
+                    updateDisplay();
+                } catch (err) {
+                    alert('Error loading config: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function updateRustCode(layout, frameCount, frameWidth, frameHeight, gridColumns) {
+            let layoutType;
+            if (layout === 'horizontal') {
+                layoutType = 'HorizontalStrip';
+            } else if (layout === 'vertical') {
+                layoutType = 'VerticalStrip';
+            } else {
+                layoutType = `Grid { columns: ${gridColumns} }`;
+            }
+
+            const code = `// For your sprite sheet:
+SpriteSheetLayout::${layoutType}
+
+// Frame dimensions: ${frameWidth}x${frameHeight}
+// Total frames: ${frameCount}
+
+// In ImageLoader::load_frames():
+let layout = Some(SpriteSheetLayout::${layoutType});
+ImageLoader::load_frames(
+    base_paths,
+    "your_folder_name",
+    ${frameCount}, // frame_count
+    game_loader,
+    layout
+);`;
+
+            document.getElementById('rustCode').textContent = code;
+        }
+
+        function updateJsonCode(layout, frameCount, gridColumns) {
+            const jsonObj = {
+                frame_count: frameCount,
+                fps: 4.0,
+                layout: layout
+            };
+
+            if (layout === 'grid') {
+                jsonObj.grid_columns = gridColumns;
+            }
+
+            const jsonStr = JSON.stringify(jsonObj, null, 2);
+            document.getElementById('jsonCode').textContent = jsonStr;
+        }
+    </script>
+</body>
+</html>
