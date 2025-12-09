@@ -1,0 +1,7 @@
+{
+  "animation_mode": {
+    "state_mapping": "percentage"
+  },
+  "frame_count": 101,
+  "layout": "horizontal"
+}

@@ -13,6 +13,59 @@ use crate::gui::{
     WindowOptions, WindowToken,
 };
 
+use std::cell::RefCell;
+
+thread_local! {
+    /// Global texture manager for the current render thread
+    /// Set by the runner before rendering, accessible during plugin updates
+    static TEXTURE_MANAGER_ID_COUNTER: RefCell<u64> = RefCell::new(1);
+    static TEXTURE_UPLOAD_REQUESTS: RefCell<Vec<(u64, u32, u32, Vec<u8>)>> = RefCell::new(Vec::new());
+    /// Maps plugin request IDs to actual GPU texture IDs (set by runner during render)
+    static TEXTURE_ID_MAP: RefCell<std::collections::HashMap<u64, imgui::TextureId>> = RefCell::new(std::collections::HashMap::new());
+}
+
+/// Request a texture upload (stores in thread-local, flushed by runner)
+pub fn request_texture_upload(data: &[u8], width: u32, height: u32) -> u64 {
+    let id = TEXTURE_MANAGER_ID_COUNTER.with(|counter| {
+        let mut counter = counter.borrow_mut();
+        let id = *counter;
+        *counter += 1;
+        id
+    });
+
+    TEXTURE_UPLOAD_REQUESTS.with(|requests| {
+        requests
+            .borrow_mut()
+            .push((id, width, height, data.to_vec()));
+    });
+
+    id
+}
+
+/// Get and clear pending upload requests (called by runner)
+pub fn take_texture_upload_requests() -> Vec<(u64, u32, u32, Vec<u8>)> {
+    TEXTURE_UPLOAD_REQUESTS.with(|requests| std::mem::take(&mut *requests.borrow_mut()))
+}
+
+/// Set the texture ID mapping (called by runner after uploading textures)
+pub fn set_texture_id_map(map: std::collections::HashMap<u64, imgui::TextureId>) {
+    TEXTURE_ID_MAP.with(|id_map| {
+        *id_map.borrow_mut() = map;
+    });
+}
+
+/// Translate a request ID to a GPU texture ID (called during rendering)
+fn translate_texture_id(request_id: imgui::TextureId) -> imgui::TextureId {
+    let request_id_u64 = request_id.id() as u64;
+    TEXTURE_ID_MAP.with(|id_map| {
+        id_map
+            .borrow()
+            .get(&request_id_u64)
+            .copied()
+            .unwrap_or(request_id) // Fall back to original ID if not found
+    })
+}
+
 #[cfg(feature = "ui-imgui")]
 pub struct ImguiBackend<'ui> {
     pub ui: &'ui imgui::Ui,
@@ -754,6 +807,21 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
     fn input_scalar(&self, label: &str, value: &mut i32) -> bool {
         self.ui.input_scalar(label, value).build()
     }
+
+    // ===== Texture Management =====
+
+    fn upload_texture(&self, data: &[u8], width: u32, height: u32) -> imgui::TextureId {
+        // Queue texture upload request (will be processed during render pass)
+        let id = request_texture_upload(data, width, height);
+        // Return a temporary ID - the real TextureId will be mapped after flush
+        imgui::TextureId::new(id as usize)
+    }
+
+    fn free_texture(&self, texture_id: imgui::TextureId) {
+        // TODO: Implement texture cleanup via thread-local free queue
+        // For now, textures are leaked (will fix after basic upload works)
+        let _ = texture_id;
+    }
 }
 
 // ===== ImGui DrawList Implementation =====
@@ -812,6 +880,33 @@ impl DrawList for ImguiDrawList<'_> {
 
     fn pop_clip_rect(&mut self) {
         // self.list.pop_clip_rect();
+    }
+
+    // ===== Texture Rendering =====
+
+    fn add_image(&mut self, texture_id: imgui::TextureId, p_min: Vec2, p_max: Vec2) {
+        let gpu_texture_id = translate_texture_id(texture_id);
+        self.list
+            .add_image(gpu_texture_id, p_min.to_array(), p_max.to_array())
+            .build();
+    }
+
+    fn add_image_quad(
+        &mut self,
+        texture_id: imgui::TextureId,
+        p_min: Vec2,
+        p_max: Vec2,
+        uv_min: Vec2,
+        uv_max: Vec2,
+        col: Color,
+    ) {
+        let gpu_texture_id = translate_texture_id(texture_id);
+        self.list
+            .add_image(gpu_texture_id, p_min.to_array(), p_max.to_array())
+            .uv_min(uv_min.to_array())
+            .uv_max(uv_max.to_array())
+            .col(color_to_u32(col))
+            .build();
     }
 }
 

@@ -42,6 +42,33 @@ pub fn handle_event(
                 runner_host.render_ui(ui);
             } // ui is dropped here
 
+            // Update Clear Color from RunnerHost
+            let color_f64 = [
+                runner_host.clear_color[0] as f64,
+                runner_host.clear_color[1] as f64,
+                runner_host.clear_color[2] as f64,
+                runner_host.clear_color[3] as f64,
+            ];
+            wgpu_renderer.set_clear_color(color_f64);
+
+            // Handle Queued Background Image Load
+            if let Some(path) = runner_host.queued_bg_image.take() {
+                match image::open(&path) {
+                    Ok(img) => {
+                        let width = img.width();
+                        let height = img.height();
+                        let texture_id =
+                            wgpu_renderer.create_texture(&img, Some("background_image"));
+                        runner_host.background_image = Some(texture_id);
+                        runner_host.bg_image_size = [width, height];
+                        println!("Loaded background image: {} ({}x{})", path, width, height);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load background image '{}': {}", path, e);
+                    }
+                }
+            }
+
             // Render frame
             let draw_data = imgui_ctx.context_mut().render();
             if let Err(wgpu::SurfaceError::Outdated) = wgpu_renderer.render(draw_data) {

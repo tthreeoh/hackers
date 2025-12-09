@@ -13,15 +13,32 @@ pub struct RunnerHost {
     pub app_hotkeys: HotkeyManager,
     pub show_these: Show,
     pub unload_queue: Vec<String>,
+    pub background_image: Option<imgui::TextureId>,
+    pub clear_color: [f32; 4],
+    pub bg_image_path_input: String,
+    pub queued_bg_image: Option<String>,
+    pub bg_mode: BackgroundMode,
+    pub bg_image_size: [u32; 2],
 }
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum BackgroundMode {
+    #[default]
+    Stretch,
+    Fit,
+    Center,
+}
+
 #[derive(Debug, Clone)]
 pub struct Show {
+    //Host
     pub system_menu: bool,
     pub log_viewer: bool,
     pub host_window: bool,
     pub plugin_manager: bool,
     pub metadata_editor: bool,
     pub debug_window: bool,
+    //HaCKS
     pub draw_overlays: bool,
     pub windowed_groups: bool,
     pub undocked_menus: bool,
@@ -30,12 +47,14 @@ pub struct Show {
 impl Default for Show {
     fn default() -> Self {
         Self {
+            //Host
             system_menu: true,
             log_viewer: false,
-            host_window: true,
+            host_window: false,
             plugin_manager: false,
-            metadata_editor: true,
-            debug_window: true,
+            metadata_editor: false,
+            debug_window: false,
+            //HaCKS
             draw_overlays: true,
             windowed_groups: true,
             undocked_menus: true,
@@ -100,6 +119,12 @@ impl RunnerHost {
             app_hotkeys: Self::set_hotkeys(),
             show_these: Show::default(),
             unload_queue: Vec::new(),
+            background_image: None,
+            clear_color: [0.1, 0.1, 0.1, 0.5],
+            bg_image_path_input: "assets/images/_other/gloam.png".to_string(), // Default suggestion
+            queued_bg_image: None,
+            bg_mode: BackgroundMode::Stretch,
+            bg_image_size: [0, 0],
         }
     }
 
@@ -140,6 +165,45 @@ impl RunnerHost {
             self.show_these.system_menu = !self.show_these.system_menu;
         }
 
+        if let Some(texture_id) = self.background_image {
+            let bg_draw_list = ui.get_background_draw_list();
+            let [display_w, display_h] = ui.io().display_size;
+
+            let (p_min, p_max) = match self.bg_mode {
+                BackgroundMode::Stretch => ([0.0, 0.0], [display_w, display_h]),
+                BackgroundMode::Fit => {
+                    if self.bg_image_size[0] == 0 || self.bg_image_size[1] == 0 {
+                        ([0.0, 0.0], [display_w, display_h])
+                    } else {
+                        let img_w = self.bg_image_size[0] as f32;
+                        let img_h = self.bg_image_size[1] as f32;
+                        let scale_x = display_w / img_w;
+                        let scale_y = display_h / img_h;
+                        let scale = scale_x.min(scale_y);
+
+                        let w = img_w * scale;
+                        let h = img_h * scale;
+                        let x = (display_w - w) * 0.5;
+                        let y = (display_h - h) * 0.5;
+                        ([x, y], [x + w, y + h])
+                    }
+                }
+                BackgroundMode::Center => {
+                    if self.bg_image_size[0] == 0 || self.bg_image_size[1] == 0 {
+                        ([0.0, 0.0], [display_w, display_h])
+                    } else {
+                        let img_w = self.bg_image_size[0] as f32;
+                        let img_h = self.bg_image_size[1] as f32;
+                        let x = (display_w - img_w) * 0.5;
+                        let y = (display_h - img_h) * 0.5;
+                        ([x, y], [x + img_w, y + img_h])
+                    }
+                }
+            };
+
+            bg_draw_list.add_image(texture_id, p_min, p_max).build();
+        }
+
         // Render Menu Bar
         if self.show_these.system_menu {
             if let Some(_menu_bar) = ui.begin_main_menu_bar() {
@@ -155,14 +219,44 @@ impl RunnerHost {
                     if ui.menu_item("Exit") {
                         // Request exit
                     }
+                    ui.separator();
+                    if let Some(_token) = ui.begin_menu("Background") {
+                        // Color Picker
+                        ui.color_edit4("Clear Color", &mut self.clear_color);
+
+                        // Image Loader
+                        ui.input_text("Image Path", &mut self.bg_image_path_input)
+                            .build();
+                        if ui.button("Load Image") {
+                            self.queued_bg_image = Some(self.bg_image_path_input.clone());
+                        }
+                        ui.same_line();
+                        if ui.button("Clear Image") {
+                            self.background_image = None;
+                        }
+
+                        ui.separator();
+                        ui.text("Background Fit Mode:");
+                        if ui.radio_button_bool("Stretch", self.bg_mode == BackgroundMode::Stretch)
+                        {
+                            self.bg_mode = BackgroundMode::Stretch;
+                        };
+                        ui.same_line();
+                        if ui.radio_button_bool("Fit", self.bg_mode == BackgroundMode::Fit) {
+                            self.bg_mode = BackgroundMode::Fit;
+                        };
+                        ui.same_line();
+                        if ui.radio_button_bool("Center", self.bg_mode == BackgroundMode::Center) {
+                            self.bg_mode = BackgroundMode::Center;
+                        };
+                    }
                 }
                 if let Some(_token) = ui.begin_menu("HaCKs") {
                     self.hacks.render_menu(&backend);
                 }
-
                 if let Some(_token) = ui.begin_menu("Plugin Manager") {
                     plugin_ui::render_plugin_manager_inner(
-                        &ui,
+                        ui,
                         &mut self.hacks,
                         &mut self.unload_queue,
                     );

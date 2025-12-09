@@ -71,6 +71,9 @@ async fn run(event_loop: EventLoop<()>, window: Arc<winit::window::Window>) {
         }))]
     });
 
+    // Trigger initial background load if configured
+    runner_host.queued_bg_image = Some(runner_host.bg_image_path_input.clone());
+
     let _ = event_loop.run(move |event, elwt| {
         event_handler::handle_event(
             event,

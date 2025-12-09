@@ -2,20 +2,29 @@ use abi_stable::{
     export_root_module,
     prefix_type::PrefixTypeTrait,
     sabi_trait::prelude::TD_Opaque,
+    sabi_types::RRef,
     std_types::{RBox, RStr, RString},
 };
 use hackers::hackrs::stable_abi::{
-    HackersModule, HackersModule_Ref, StableDrawList, StableHaCK, StableHaCK_TO, StableHaCMetadata,
+    HackersModule, HackersModule_Ref, StableHaCK, StableHaCK_TO, StableHaCMetadata,
     StableUiBackend_TO,
 };
 use hackers::metadata::HaCKLoadType;
+use hackers::sprites::animation_utils::{calculate_frame_index, AnimationConfig};
 use hackers::sprites::{
-    discover_sprite_folders, AnimationMode, DiscoveredFolder, ImageCategory, ImageLoader,
-    ImageLoadingState, LoadingConfig, UnitAnimationMode,
+    discover_sprite_folders, DiscoveredFolder, ImageCategory, ImageLoader, ImageLoadingState,
+    LoadingConfig, UnitAnimationMode,
 };
-use image::{DynamicImage, GenericImageView};
+use image::DynamicImage;
 use std::collections::HashMap;
 use std::time::Instant;
+
+// --- Helper Structs ---
+#[derive(Clone, Debug)]
+pub struct AnimationSettings {
+    pub fps: f32,
+    pub speed: f32,
+}
 
 // We'll reimplement or mock the parts of image_test we need
 // For now, let's just make it compilable and show the UI
@@ -26,7 +35,15 @@ pub struct ImageTestHaCK {
     show_grid: bool,
     image_scale: i32,
     animation_speed: f32,
+    // paused field is already present at line 30, so we just add the new ones nearby
     paused: bool,
+
+    // New config fields
+    use_config_settings: bool,
+    temp_fps: Option<f32>,
+    temp_speed: Option<f32>,
+    override_fps: f32,
+
     current_frame: i32,
     show_animation_modes: bool,
     current_animation_mode: u8,
@@ -35,6 +52,7 @@ pub struct ImageTestHaCK {
     search_paths: Vec<String>,
     discovered_folders: Vec<DiscoveredFolder>,
     selected_folder_index: i32,
+    selected_image_index: i32,
 
     // State
     is_loading: bool,
@@ -42,6 +60,14 @@ pub struct ImageTestHaCK {
     loading_state: Option<ImageLoadingState>,
     image_list: Option<HashMap<String, DynamicImage>>,
     animation_start: Option<Instant>,
+    /// Maps image keys to uploaded GPU texture IDs
+    texture_cache: HashMap<String, hackers::hackrs::stable_abi::StableTextureId>,
+
+    // UI State
+    show_search_paths: bool,
+    show_discovered_folders: bool,
+    show_images: bool,
+    show_config: bool,
 
     // Center pos
     center_position: bool,
@@ -75,6 +101,10 @@ impl ImageTestHaCK {
             image_scale: 50,
             animation_speed: 1.0,
             paused: false,
+            use_config_settings: true,
+            temp_fps: None,
+            temp_speed: None,
+            override_fps: 15.0,
             current_frame: 0,
             show_animation_modes: false,
             current_animation_mode: 1, // Stand
@@ -86,14 +116,21 @@ impl ImageTestHaCK {
             ],
             discovered_folders: Vec::new(),
             selected_folder_index: -1,
+            selected_image_index: 0,
             is_loading: false,
             new_path_input: RString::new(),
             loading_state: None,
             image_list: None,
             animation_start: None,
+            texture_cache: HashMap::new(),
             center_position: true,
             x_offset: 0.0,
             y_offset: 0.0,
+
+            show_search_paths: false,
+            show_discovered_folders: true,
+            show_images: false,
+            show_config: true,
         }
     }
 
@@ -131,11 +168,6 @@ impl ImageTestHaCK {
     }
 
     fn update_loading(&mut self) {
-        println!(
-            "[ImageTest] update_loading called, is_loading={}",
-            self.is_loading
-        );
-
         if !self.is_loading {
             return;
         }
@@ -145,6 +177,7 @@ impl ImageTestHaCK {
             return;
         };
 
+        println!("[ImageTest.update_loading] is_loading={}", self.is_loading);
         // Load a chunk of images this frame
         let has_more = loading_state.load_chunk(None);
 
@@ -159,6 +192,8 @@ impl ImageTestHaCK {
         }
 
         if !has_more {
+            println!("[ImageTest.update_loading] Loading complete");
+
             // Loading complete!
             if let Some(loading_state) = self.loading_state.take() {
                 self.image_list = Some(loading_state.into_images());
@@ -186,6 +221,84 @@ impl ImageTestHaCK {
             None
         }
     }
+    // Helper for simulated headers
+    fn get_current_settings(&self) -> AnimationSettings {
+        if !self.use_config_settings {
+            // Use manual overrides
+            return AnimationSettings {
+                fps: self.temp_fps.unwrap_or(self.override_fps),
+                speed: self.temp_speed.unwrap_or(1.0),
+            };
+        }
+
+        // Use config settings
+        let folder = match self.get_current_folder() {
+            Some(f) => f,
+            None => {
+                return AnimationSettings {
+                    fps: self.override_fps,
+                    speed: 1.0,
+                }
+            }
+        };
+
+        // Check for mode-specific overrides
+        if self.show_animation_modes {
+            if let Some(mode) = UnitAnimationMode::from_u8(self.current_animation_mode) {
+                let mode_name = format!("{:?}", mode).to_lowercase();
+
+                if let Some(overrides) = &folder.mode_overrides {
+                    let mode_config = match mode_name.as_str() {
+                        "walk" => &overrides.walk,
+                        "run" => &overrides.run,
+                        "attack1" => &overrides.attack1,
+                        "attack2" => &overrides.attack2,
+                        "cast" => &overrides.cast,
+                        "death" => &overrides.death,
+                        "stand" => &overrides.stand,
+                        _ => &None,
+                    };
+
+                    if let Some(config) = mode_config {
+                        return AnimationSettings {
+                            fps: config.fps.or(folder.fps).unwrap_or(self.override_fps),
+                            speed: config.speed.or(folder.speed).unwrap_or(1.0),
+                        };
+                    }
+                }
+            }
+        }
+
+        // Use folder-level config
+        AnimationSettings {
+            fps: folder.fps.unwrap_or(self.override_fps),
+            speed: folder.speed.unwrap_or(1.0),
+        }
+    }
+
+    fn get_effective_fps(&self) -> f32 {
+        self.get_current_settings().fps
+    }
+
+    fn reset_to_config(&mut self) {
+        self.temp_fps = None;
+        self.temp_speed = None;
+        self.use_config_settings = true;
+    }
+
+    fn draw_header(ui: &StableUiBackend_TO<'_, RRef<'_, ()>>, label: &str, state: &mut bool) {
+        let icon = if *state { "▼" } else { "▶" };
+        let button_label = format!("{} {}", icon, label);
+        if ui.button(RStr::from_str(&button_label)) {
+            *state = !*state;
+        }
+    }
+
+    // Helper for indentation
+    fn draw_indent(ui: &StableUiBackend_TO<'_, RRef<'_, ()>>) {
+        ui.dummy(20.0, 0.0);
+        ui.same_line();
+    }
 }
 
 impl StableHaCK for ImageTestHaCK {
@@ -205,155 +318,224 @@ impl StableHaCK for ImageTestHaCK {
             }
             ui.end_menu();
         }
-    }
-
-    fn render_window(&mut self, ui: &StableUiBackend_TO<'_, abi_stable::sabi_types::RRef<'_, ()>>) {
         ui.text(RStr::from_str("Image Test Plugin"));
         ui.separator();
 
         ui.checkbox(RStr::from_str("Enabled"), &mut self.enabled);
+        ui.separator();
 
-        // === LOADING PROGRESS ===
-        if self.is_loading {
-            if let Some((progress, status)) = self.get_loading_progress() {
-                ui.text_colored([1.0, 1.0, 0.0, 1.0], RStr::from_str("⚙ Loading Images..."));
-                ui.text_colored([0.7, 0.7, 0.7, 1.0], RStr::from_str(&status));
-                ui.text(RStr::from_str(&format!(
-                    "Progress: {:.0}%",
-                    progress * 100.0
-                )));
-                ui.separator();
+        // --- Search Paths Section ---
+        Self::draw_header(ui, "Search Paths", &mut self.show_search_paths);
+        if self.show_search_paths {
+            Self::draw_indent(ui);
+            ui.text(RStr::from_str("configured paths:"));
+            for path in &self.search_paths {
+                Self::draw_indent(ui); // double indent
+                ui.text(RStr::from_str(&format!("- {}", path)));
             }
-        } else if let Some(images) = &self.image_list {
-            ui.text_colored(
-                [0.5, 1.0, 0.5, 1.0],
-                RStr::from_str(&format!("✓ {} images loaded", images.len())),
-            );
-            ui.separator();
-        }
 
-        if ui.button(RStr::from_str("Scan & Reload All")) {
-            self.scan_and_load();
+            Self::draw_indent(ui);
+            ui.text(RStr::from_str("Add new path:"));
+            Self::draw_indent(ui);
+            ui.input_text(RStr::from_str("##new_path"), &mut self.new_path_input);
+            ui.same_line();
+            if ui.button(RStr::from_str("Add")) {
+                let path_str = self.new_path_input.to_string();
+                if !path_str.is_empty() {
+                    self.search_paths.push(path_str);
+                    self.new_path_input = RString::from("");
+                    // Trigger rescan
+                    self.scan_and_load();
+                }
+            }
         }
 
         ui.separator();
-        ui.text(RStr::from_str("Add New Path:"));
-        ui.input_text(RStr::from_str("##PathInput"), &mut self.new_path_input);
-        ui.same_line();
-        if ui.button(RStr::from_str("Add")) {
-            let path_str = self.new_path_input.to_string();
-            if !path_str.is_empty() {
-                self.search_paths.push(path_str);
-                self.new_path_input = RString::new();
-                self.scan_and_load();
-            }
-        }
 
-        ui.text(RStr::from_str(
-            format!("Discovered folders: {}", self.discovered_folders.len()).as_str(),
-        ));
-
-        if !self.discovered_folders.is_empty() {
-            ui.separator();
-
-            // Simple combo simulation since we don't have full combo support in StableUiBackend yet?
-            // Wait, do we have combo/listbox? Checked stable_abi.rs, we do NOT have combo exposed yet.
-            // We can use a simple index cycler or similar for now.
-
-            let current_name = if let Some(f) = self.get_current_folder() {
-                f.name.clone()
+        // --- Discovered Folders Section ---
+        Self::draw_header(ui, "Discovered Folders", &mut self.show_discovered_folders);
+        if self.show_discovered_folders {
+            if self.discovered_folders.is_empty() {
+                Self::draw_indent(ui);
+                ui.text(RStr::from_str("No folders found. Check search paths."));
             } else {
-                "None".to_string()
-            };
+                for (idx, folder) in self.discovered_folders.iter().enumerate() {
+                    Self::draw_indent(ui);
 
-            ui.text(RStr::from_str(
-                format!("Selected: {}", current_name).as_str(),
-            ));
+                    // Mark selected item visually (simple prefix for now)
+                    let prefix = if idx == self.selected_folder_index as usize {
+                        "> "
+                    } else {
+                        "  "
+                    };
+                    let label = format!("{}{}", prefix, folder.name);
 
-            ui.same_line();
-            if ui.button(RStr::from_str("Next")) {
-                if !self.discovered_folders.is_empty() {
-                    self.selected_folder_index =
-                        (self.selected_folder_index + 1) % (self.discovered_folders.len() as i32);
-                }
-            }
-
-            // Show details
-            if let Some(folder) = self.get_current_folder() {
-                ui.text(RStr::from_str(
-                    format!("Frames: {}", folder.frame_count.unwrap_or(0)).as_str(),
-                ));
-                ui.text(RStr::from_str(
-                    format!("Type: {:?}", folder.source_type).as_str(),
-                ));
-
-                if folder.is_modular() {
-                    ui.text(RStr::from_str("Modular: Yes"));
-                }
-
-                // Animation Mode
-                if let Some(am) = &folder.animation_mode {
-                    ui.text(RStr::from_str(format!("Mode: {:?}", am).as_str()));
-                }
-
-                // Render some animation controls
-                ui.separator();
-                ui.checkbox(RStr::from_str("Paused"), &mut self.paused);
-                ui.slider_float(RStr::from_str("Speed"), 0.1, 5.0, &mut self.animation_speed);
-
-                ui.checkbox(
-                    RStr::from_str("Test Anim Modes"),
-                    &mut self.show_animation_modes,
-                );
-                if self.show_animation_modes {
-                    // Simple mode cycler
-                    let mode_name = format!(
-                        "Current Mode: {:?}",
-                        UnitAnimationMode::from_u8(self.current_animation_mode)
-                            .unwrap_or(UnitAnimationMode::Stand)
-                    );
-                    ui.text(RStr::from_str(&mode_name));
-                    if ui.button(RStr::from_str("Next Mode")) {
-                        self.current_animation_mode = (self.current_animation_mode + 1) % 16;
+                    if ui.button(RStr::from_str(&label)) {
+                        self.selected_folder_index = idx as i32;
                     }
                 }
             }
         }
 
         ui.separator();
-        ui.text(RStr::from_str("Draw Settings"));
 
-        // Scale slider (using float since slider_int isn't in StableUiBackend)
-        let mut scale_float = self.image_scale as f32;
-        if ui.slider_float(
-            RStr::from_str("Image Scale %"),
-            1.0,
-            200.0,
-            &mut scale_float,
-        ) {
-            self.image_scale = scale_float as i32;
+        // --- Selected Folder Details ---
+        // --- Selected Folder Details ---
+        let current_folder_idx = self.selected_folder_index;
+        if current_folder_idx >= 0 && (current_folder_idx as usize) < self.discovered_folders.len()
+        {
+            let folder = &self.discovered_folders[current_folder_idx as usize];
+
+            let total_images = folder
+                .files
+                .as_ref()
+                .map_or(folder.frame_count.unwrap_or(0), |f| f.len());
+
+            ui.text(RStr::from_str(&format!(
+                "Selected: {} ({} images)",
+                folder.name, total_images
+            )));
+
+            // Previous/Next buttons for images
+            if ui.button(RStr::from_str("Prev Image")) {
+                self.selected_image_index -= 1;
+                if self.selected_image_index < 0 {
+                    self.selected_image_index = (total_images as i32) - 1;
+                }
+            }
+            ui.same_line();
+            if ui.button(RStr::from_str("Next Image")) {
+                if total_images > 0 {
+                    self.selected_image_index =
+                        (self.selected_image_index + 1) % (total_images as i32);
+                }
+            }
+
+            ui.text(RStr::from_str(&format!(
+                "Image Index: {}",
+                self.selected_image_index
+            )));
+
+            // Animation Controls for selected folder
+            if let Some(am) = &folder.animation_mode {
+                ui.text(RStr::from_str(format!("Mode: {:?}", am).as_str()));
+            }
+
+            ui.separator();
+            ui.text(RStr::from_str("Animation Controls"));
+            Self::draw_indent(ui);
+
+            // Paused
+            ui.checkbox(RStr::from_str("Paused"), &mut self.paused);
+
+            // Config vs Override
+            ui.checkbox(
+                RStr::from_str("Use Config Settings"),
+                &mut self.use_config_settings,
+            );
+            ui.same_line();
+            if ui.button(RStr::from_str("Reset")) {
+                self.reset_to_config();
+            }
+
+            if self.use_config_settings {
+                let settings = self.get_current_settings();
+                ui.text_colored(
+                    [0.5, 1.0, 0.5, 1.0],
+                    RStr::from_str(&format!("FPS: {:.1} (Config)", settings.fps)),
+                );
+                ui.text_colored(
+                    [0.5, 1.0, 0.5, 1.0],
+                    RStr::from_str(&format!("Speed: {:.1}x (Config)", settings.speed)),
+                );
+            } else {
+                ui.text_colored([1.0, 1.0, 0.5, 1.0], RStr::from_str("Using overrides"));
+
+                // FPS Override
+                let current_fps = self.temp_fps.unwrap_or(self.override_fps);
+                let mut temp_fps = current_fps;
+                if ui.slider_float(RStr::from_str("FPS Override"), 1.0, 60.0, &mut temp_fps) {
+                    self.temp_fps = Some(temp_fps);
+                }
+
+                // Speed Override
+                let current_speed = self.temp_speed.unwrap_or(1.0);
+                let mut temp_speed = current_speed;
+                if ui.slider_float(
+                    RStr::from_str("Speed Multiplier"),
+                    0.1,
+                    5.0,
+                    &mut temp_speed,
+                ) {
+                    self.temp_speed = Some(temp_speed);
+                }
+            }
+
+            if ui.button(RStr::from_str("Test Anim Modes")) {
+                self.show_animation_modes = !self.show_animation_modes;
+            }
+
+            if self.show_animation_modes {
+                // Simple mode cycler
+                let mode_name = format!(
+                    "Current Mode: {:?}",
+                    UnitAnimationMode::from_u8(self.current_animation_mode)
+                        .unwrap_or(UnitAnimationMode::Stand)
+                );
+                ui.text(RStr::from_str(&mode_name));
+                if ui.button(RStr::from_str("Next Mode")) {
+                    self.current_animation_mode = (self.current_animation_mode + 1) % 16;
+                }
+            }
+        } else {
+            ui.text(RStr::from_str("No folder selected"));
         }
 
-        ui.checkbox(RStr::from_str("Center Position"), &mut self.center_position);
-        if !self.center_position {
-            ui.slider_float(
-                RStr::from_str("X Offset"),
-                -500.0,
-                500.0,
-                &mut self.x_offset,
-            );
-            ui.slider_float(
-                RStr::from_str("Y Offset"),
-                -500.0,
-                500.0,
-                &mut self.y_offset,
-            );
+        ui.separator();
+
+        // --- Config Section ---
+        Self::draw_header(ui, "Configuration", &mut self.show_config);
+        if self.show_config {
+            Self::draw_indent(ui);
+            ui.checkbox(RStr::from_str("Center Position"), &mut self.center_position);
+            if !self.center_position {
+                Self::draw_indent(ui);
+                ui.slider_float(
+                    RStr::from_str("X Offset"),
+                    -500.0,
+                    500.0,
+                    &mut self.x_offset,
+                );
+                Self::draw_indent(ui);
+                ui.slider_float(
+                    RStr::from_str("Y Offset"),
+                    -500.0,
+                    500.0,
+                    &mut self.y_offset,
+                );
+            }
+
+            Self::draw_indent(ui);
+            // Scale slider
+            let mut scale_float = self.image_scale as f32;
+            if ui.slider_float(
+                RStr::from_str("Image Scale %"),
+                1.0,
+                200.0,
+                &mut scale_float,
+            ) {
+                self.image_scale = scale_float as i32;
+            }
         }
+    }
+
+    fn render_window(&mut self, ui: &StableUiBackend_TO<'_, abi_stable::sabi_types::RRef<'_, ()>>) {
+        self.render_menu(ui);
     }
 
     fn render_draw(
         &mut self,
-        _ui: &StableUiBackend_TO<'_, abi_stable::sabi_types::RRef<'_, ()>>,
+        ui: &StableUiBackend_TO<'_, abi_stable::sabi_types::RRef<'_, ()>>,
         _draw_fg: &mut hackers::hackrs::stable_abi::StableDrawList_TO<
             '_,
             abi_stable::std_types::RBox<()>,
@@ -365,6 +547,24 @@ impl StableHaCK for ImageTestHaCK {
     ) {
         if !self.enabled {
             return;
+        }
+
+        // Upload textures for any newly loaded images
+        if let Some(images) = &self.image_list {
+            for (key, img) in images.iter() {
+                if !self.texture_cache.contains_key(key) {
+                    // Convert image to RGBA8
+                    let rgba = img.to_rgba8();
+                    let width = rgba.width();
+                    let height = rgba.height();
+                    let data = rgba.as_raw();
+
+                    // Upload texture and store ID
+                    use abi_stable::std_types::RSlice;
+                    let texture_id = ui.upload_texture(RSlice::from_slice(data), width, height);
+                    self.texture_cache.insert(key.clone(), texture_id);
+                }
+            }
         }
 
         // Get images and current folder
@@ -381,10 +581,9 @@ impl StableHaCK for ImageTestHaCK {
         };
 
         // Calculate center position
-        // TODO: Get actual display size through StableUiBackend when exposed
-        // For now, assume standard 1920x1080 display
-        let screen_width = 1920.0;
-        let screen_height = 1080.0;
+        let display_size = ui.get_display_size();
+        let screen_width = display_size[0];
+        let screen_height = display_size[1];
 
         let center_x = if self.center_position {
             screen_width / 2.0
@@ -421,101 +620,82 @@ impl StableHaCK for ImageTestHaCK {
             return;
         }
 
-        // Calculate current frame index
-        let frame_index = if self.paused {
-            self.current_frame.min(frames.len() as i32 - 1).max(0) as usize
-        } else {
-            // Time-based animation
-            let elapsed = if let Some(start) = self.animation_start {
-                start.elapsed().as_secs_f32() * self.animation_speed
-            } else {
+        // Calculate current frame
+        let elapsed = if let Some(start) = self.animation_start {
+            if self.paused {
+                // If paused, we effectively hold time.
+                // For simplicity in this stateless view, we just use 0.0 or rely on current_frame
                 0.0
-            };
-
-            // Simple FPS-based frame calculation
-            let fps = 4.0; // Default FPS
-            let total_frames = frames.len();
-            let frame_time = elapsed * fps;
-            (frame_time as usize) % total_frames
-        };
-
-        let (_, img) = frames[frame_index];
-
-        // Downsample large images to prevent vertex overflow
-        // ImGui has a 65k vertex limit (16-bit indices)
-        // Each rectangle = 4 vertices, so max rectangles = 16,384
-        // Worst case: 1 rectangle per pixel, so max = 128x128 pixels
-        let max_dimension = 128; // Safe limit even with no strip compression
-        let needs_downsample = img.width() > max_dimension || img.height() > max_dimension;
-
-        let display_img;
-        let img_to_draw = if needs_downsample {
-            use image::imageops::FilterType;
-            let scale_factor = (max_dimension as f32 / img.width().max(img.height()) as f32);
-            let new_width = (img.width() as f32 * scale_factor) as u32;
-            let new_height = (img.height() as f32 * scale_factor) as u32;
-            display_img = img.resize(new_width, new_height, FilterType::Nearest);
-            &display_img
-        } else {
-            img
-        };
-
-        // Draw the image using horizontal strips to reduce vertex count
-        let img_width = img_to_draw.width() as f32;
-        let img_height = img_to_draw.height() as f32;
-
-        let x_base = center_x - (img_width * scale / 2.0);
-        let y_base = center_y - (img_height * scale / 2.0);
-
-        use image::GenericImageView;
-
-        // Process row by row, merging adjacent pixels of same color into strips
-        for row in 0..img_to_draw.height() {
-            let mut current_strip_start: Option<(u32, [f32; 4])> = None;
-
-            for col in 0..=img_to_draw.width() {
-                let pixel_color = if col < img_to_draw.width() {
-                    let pixel = img_to_draw.get_pixel(col, row);
-                    if pixel[3] == 0 {
-                        None // Transparent
-                    } else {
-                        Some([
-                            pixel[0] as f32 / 255.0,
-                            pixel[1] as f32 / 255.0,
-                            pixel[2] as f32 / 255.0,
-                            pixel[3] as f32 / 255.0,
-                        ])
-                    }
-                } else {
-                    None // End of row
-                };
-
-                match (&current_strip_start, pixel_color) {
-                    (Some((start_col, strip_color)), Some(color)) if color == *strip_color => {
-                        // Same color, continue strip
-                    }
-                    (Some((start_col, strip_color)), _) => {
-                        // Different color or end of row, draw the strip
-                        let x1 = x_base + (*start_col as f32 * scale);
-                        let y1 = y_base + (row as f32 * scale);
-                        let x2 = x_base + (col as f32 * scale);
-                        let y2 = y1 + scale;
-
-                        draw_bg.add_rect([x1, y1], [x2, y2], *strip_color, true);
-
-                        // Start new strip if this pixel is not transparent
-                        current_strip_start = pixel_color.map(|c| (col, c));
-                    }
-                    (None, Some(color)) => {
-                        // Start new strip
-                        current_strip_start = Some((col, color));
-                    }
-                    (None, None) => {
-                        // Transparent pixel, no strip
-                    }
-                }
+            } else {
+                let duration = Instant::now().duration_since(start);
+                duration.as_secs_f32()
             }
-        }
+        } else {
+            0.0
+        };
+
+        let settings = self.get_current_settings();
+        let frame_index = if self.paused {
+            // Manual control or paused state
+            self.current_frame as usize % frames.len()
+        } else {
+            // Automatic animation
+            let config = AnimationConfig::new(
+                folder_name.clone(),
+                folder_name.clone(),
+                frames.len(),
+                settings.fps,
+            );
+
+            if self.show_animation_modes {
+                if let Some(mode) = UnitAnimationMode::from_u8(self.current_animation_mode) {
+                    calculate_frame_index(&mode, &config, elapsed * settings.speed)
+                } else {
+                    config.get_frame_index(elapsed * settings.speed)
+                }
+            } else {
+                config.get_frame_index(elapsed * settings.speed)
+            }
+        };
+
+        // Update stored frame for UI reflection
+        self.current_frame = frame_index as i32;
+
+        // Ensure safe index
+        let safe_index = frame_index % frames.len();
+        let (_name, img) = frames[safe_index];
+
+        // Get the uploaded texture ID
+        let Some(texture_id) = self.texture_cache.get(_name) else {
+            return; // Texture not uploaded yet
+        };
+
+        // Draw the image
+        // Draw the image
+
+        let img_width = img.width() as f32 * scale;
+        let img_height = img.height() as f32 * scale;
+
+        let x1 = center_x - (img_width / 2.0);
+        let y1 = center_y - (img_height / 2.0);
+        let x2 = x1 + img_width;
+        let y2 = y1 + img_height;
+
+        draw_bg.add_image(texture_id.clone(), [x1, y1].into(), [x2, y2].into());
+
+        // Draw frame info overlay
+        let info = format!("Frame {}/{} ({})", safe_index + 1, frames.len(), _name);
+        // Simple text shadow/outline for visibility
+        draw_bg.add_text(
+            [x1 + 1.0, y1 - 24.0].into(),
+            [0.0, 0.0, 0.0, 1.0],
+            RStr::from_str(&info),
+        );
+        draw_bg.add_text(
+            [x1, y1 - 25.0].into(),
+            [1.0, 1.0, 1.0, 1.0],
+            RStr::from_str(&info),
+        );
     }
 
     fn on_load(&mut self) {

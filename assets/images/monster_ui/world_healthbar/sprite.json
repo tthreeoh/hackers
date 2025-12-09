@@ -1,0 +1,8 @@
+{
+  "frame_count": 101,
+  "fps": 1,
+  "layout": "horizontal",
+  "animation_mode": {
+    "state_mapping": "percentage"
+  }
+}

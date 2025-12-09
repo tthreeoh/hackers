@@ -36,6 +36,28 @@ pub struct StableWindowOptions {
     pub resizable: bool,
 }
 
+/// Opaque texture handle for ABI-safe texture management
+#[repr(C)]
+#[derive(StableAbi, Clone, Copy)]
+pub struct StableTextureId {
+    // Just store the texture ID as a usize
+    id: usize,
+}
+
+impl StableTextureId {
+    pub fn new(id: imgui::TextureId) -> Self {
+        Self { id: id.id() }
+    }
+
+    pub fn get(&self) -> imgui::TextureId {
+        imgui::TextureId::new(self.id)
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
+    }
+}
+
 /// Stable version of HaCMetadata for ABI-safe transfer across DLL boundaries.
 #[repr(C)]
 #[derive(StableAbi, Clone)]
@@ -117,6 +139,7 @@ pub trait StableUiBackend {
     fn separator(&self);
     fn same_line(&self);
     fn dummy(&self, width: f32, height: f32);
+    fn get_display_size(&self) -> [f32; 2];
 
     // Basic Widgets
     fn button(&self, label: RStr<'_>) -> bool;
@@ -138,7 +161,14 @@ pub trait StableUiBackend {
 
     // Drawing
     fn get_window_draw_list(&self) -> StableDrawList_TO<'_, RBox<()>>;
-    // get_{foreground,background}_draw_list removed to prevent double-borrow panics
+
+    // Texture Management
+    fn upload_texture(
+        &self,
+        data: abi_stable::std_types::RSlice<'_, u8>,
+        width: u32,
+        height: u32,
+    ) -> StableTextureId;
 }
 
 #[sabi_trait]
@@ -149,6 +179,9 @@ pub trait StableDrawList {
     fn add_circle(&mut self, center: [f32; 2], radius: f32, color: [f32; 4], filled: bool);
     fn push_clip_rect(&mut self, min: [f32; 2], max: [f32; 2], intersect_with_current: bool);
     fn pop_clip_rect(&mut self);
+
+    // Texture Rendering
+    fn add_image(&mut self, texture_id: StableTextureId, p_min: [f32; 2], p_max: [f32; 2]);
 }
 
 #[sabi_trait]
@@ -223,6 +256,10 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
 
     fn dummy(&self, width: f32, height: f32) {
         self.backend.dummy(crate::gui::Vec2::new(width, height));
+    }
+
+    fn get_display_size(&self) -> [f32; 2] {
+        self.backend.io().display_size.into()
     }
 
     fn button(&self, label: RStr<'_>) -> bool {
@@ -328,6 +365,16 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
         let wrapper = StableDrawListWrapper { inner: draw_list };
         StableDrawList_TO::from_value(wrapper, abi_stable::sabi_trait::TD_Opaque)
     }
+
+    fn upload_texture(
+        &self,
+        data: abi_stable::std_types::RSlice<'_, u8>,
+        width: u32,
+        height: u32,
+    ) -> StableTextureId {
+        let texture_id = self.backend.upload_texture(data.as_slice(), width, height);
+        StableTextureId::new(texture_id)
+    }
 }
 
 pub struct StableDrawListWrapper<'a> {
@@ -377,6 +424,12 @@ impl<'a> StableDrawList for StableDrawListWrapper<'a> {
 
     fn pop_clip_rect(&mut self) {
         self.inner.pop_clip_rect();
+    }
+
+    fn add_image(&mut self, texture_id: StableTextureId, p_min: [f32; 2], p_max: [f32; 2]) {
+        let tex_id = texture_id.get();
+        self.inner
+            .add_image(tex_id, Vec2::from(p_min), Vec2::from(p_max));
     }
 }
 
@@ -452,6 +505,28 @@ impl<'a> crate::gui::DrawList for ForwardingDrawList<'a> {
     }
     fn pop_clip_rect(&mut self) {
         self.inner.pop_clip_rect();
+    }
+
+    fn add_image(
+        &mut self,
+        texture_id: imgui::TextureId,
+        p_min: crate::gui::Vec2,
+        p_max: crate::gui::Vec2,
+    ) {
+        self.inner.add_image(texture_id, p_min, p_max);
+    }
+
+    fn add_image_quad(
+        &mut self,
+        texture_id: imgui::TextureId,
+        p_min: crate::gui::Vec2,
+        p_max: crate::gui::Vec2,
+        uv_min: crate::gui::Vec2,
+        uv_max: crate::gui::Vec2,
+        col: crate::gui::Color,
+    ) {
+        self.inner
+            .add_image_quad(texture_id, p_min, p_max, uv_min, uv_max, col);
     }
 }
 

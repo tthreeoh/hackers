@@ -1,0 +1,7 @@
+{
+  "frame_count": 64,
+  "fps": 30,
+  "speed": 5.0,
+  "layout": "grid",
+  "grid_columns": 8
+}

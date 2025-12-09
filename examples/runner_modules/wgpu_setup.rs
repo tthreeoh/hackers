@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -7,6 +8,9 @@ pub struct WgpuRenderer {
     pub surface: wgpu::Surface<'static>,
     pub config: wgpu::SurfaceConfiguration,
     pub renderer: imgui_wgpu::Renderer,
+    /// Maps plugin texture request IDs to actual GPU TextureIds
+    pub texture_id_map: HashMap<u64, imgui::TextureId>,
+    pub clear_color: wgpu::Color,
 }
 
 impl WgpuRenderer {
@@ -72,6 +76,13 @@ impl WgpuRenderer {
             surface,
             config,
             renderer,
+            texture_id_map: HashMap::new(),
+            clear_color: wgpu::Color {
+                r: 0.1,
+                g: 0.1,
+                b: 0.1,
+                a: 1.0,
+            },
         }
     }
 
@@ -84,6 +95,34 @@ impl WgpuRenderer {
     }
 
     pub fn render(&mut self, draw_data: &imgui::DrawData) -> Result<(), wgpu::SurfaceError> {
+        // FIRST: Process any queued texture uploads from plugins
+        use hackers::impl_backends::imgui_backend::take_texture_upload_requests;
+        let uploads = take_texture_upload_requests();
+
+        for (request_id, width, height, data) in uploads {
+            let texture_config = imgui_wgpu::TextureConfig {
+                label: Some("imgui_uploaded_texture"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+                ..Default::default()
+            };
+
+            let texture = imgui_wgpu::Texture::new(&self.device, &self.renderer, texture_config);
+            texture.write(&self.queue, &data, width, height);
+
+            let texture_id = self.renderer.textures.insert(texture);
+
+            // Store mapping so plugins can look up the GPU texture ID
+            self.texture_id_map.insert(request_id, texture_id);
+        }
+
+        use hackers::impl_backends::imgui_backend::set_texture_id_map;
+        set_texture_id_map(self.texture_id_map.clone());
+
         let output_frame = self.surface.get_current_texture()?;
         let view = output_frame
             .texture
@@ -100,12 +139,7 @@ impl WgpuRenderer {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.1,
-                            b: 0.1,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(self.clear_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -123,5 +157,40 @@ impl WgpuRenderer {
         output_frame.present();
 
         Ok(())
+    }
+
+    pub fn set_clear_color(&mut self, color: [f64; 4]) {
+        self.clear_color = wgpu::Color {
+            r: color[0],
+            g: color[1],
+            b: color[2],
+            a: color[3],
+        };
+    }
+
+    pub fn create_texture(
+        &mut self,
+        image: &image::DynamicImage,
+        label: Option<&str>,
+    ) -> imgui::TextureId {
+        let (width, height) = (image.width(), image.height());
+        let rgba = image.to_rgba8();
+        let data = rgba.as_raw();
+
+        let texture_config = imgui_wgpu::TextureConfig {
+            label,
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+            ..Default::default()
+        };
+
+        let texture = imgui_wgpu::Texture::new(&self.device, &self.renderer, texture_config);
+        texture.write(&self.queue, data, width, height);
+
+        self.renderer.textures.insert(texture)
     }
 }

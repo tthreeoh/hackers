@@ -753,6 +753,26 @@ pub trait UiBackend {
 
     /// Get content region available (width and height)
     fn content_region_avail(&self) -> Vec2;
+
+    // ===== Texture Management =====
+
+    /// Upload RGBA image data as a GPU texture and return a texture ID
+    /// The texture must be freed with free_texture when no longer needed
+    ///
+    /// # Arguments
+    /// * `data` - Raw RGBA pixel data (4 bytes per pixel: R, G, B, A)
+    /// * `width` - Image width in pixels
+    /// * `height` - Image height in pixels
+    ///
+    /// # Returns
+    /// A texture ID that can be used with DrawList::add_image
+    fn upload_texture(&self, data: &[u8], width: u32, height: u32) -> imgui::TextureId;
+
+    /// Free a previously uploaded texture
+    ///
+    /// # Arguments
+    /// * `texture_id` - The texture ID returned from upload_texture
+    fn free_texture(&self, texture_id: imgui::TextureId);
 }
 
 // ===== DrawList Trait =====
@@ -766,4 +786,33 @@ pub trait DrawList {
     // Manual clipping - dyn-compatible alternative to with_clip_rect
     fn push_clip_rect(&mut self, min: Vec2, max: Vec2, intersect_with_current: bool);
     fn pop_clip_rect(&mut self);
+
+    // ===== Texture Rendering =====
+
+    /// Draw a textured rectangle using a GPU texture
+    ///
+    /// # Arguments
+    /// * `texture_id` - Texture ID from UiBackend::upload_texture
+    /// * `p_min` - Top-left corner in screen coordinates
+    /// * `p_max` - Bottom-right corner in screen coordinates
+    fn add_image(&mut self, texture_id: imgui::TextureId, p_min: Vec2, p_max: Vec2);
+
+    /// Draw a textured rectangle with optional UV coordinates and tint color
+    ///
+    /// # Arguments
+    /// * `texture_id` - Texture ID from UiBackend::upload_texture  
+    /// * `p_min` - Top-left corner in screen coordinates
+    /// * `p_max` - Bottom-right corner in screen coordinates
+    /// * `uv_min` - Top-left UV coordinate (default: [0.0, 0.0])
+    /// * `uv_max` - Bottom-right UV coordinate (default: [1.0, 1.0])
+    /// * `col` - Tint color (default: white [1.0, 1.0, 1.0, 1.0])
+    fn add_image_quad(
+        &mut self,
+        texture_id: imgui::TextureId,
+        p_min: Vec2,
+        p_max: Vec2,
+        uv_min: Vec2,
+        uv_max: Vec2,
+        col: Color,
+    );
 }
