@@ -15,7 +15,7 @@ pub mod impl_backends;
 pub use debug::*;
 #[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
 pub use gui::*;
-pub use hackers_derive::DeriveFieldInfo;
+pub use hackers_derive::{DeriveFieldInfo, HackSettings};
 pub use hackrs::*;
 #[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
 pub use impl_backends::*;
@@ -27,3 +27,7 @@ pub use state_tracker::*;
 pub use structview::{FieldInfo, FieldMeta, StructViewer};
 pub use HaCK;
 pub use HaCKS::HaCKS;
+#[cfg(any(feature = "gui", feature = "ui-imgui", feature = "ui-egui"))]
+pub mod host;
+pub mod settings;
+pub use settings::HackSettings;

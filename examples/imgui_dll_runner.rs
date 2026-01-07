@@ -1,7 +1,8 @@
 mod runner_modules;
 
+use hackers::host::runner::RunnerHost;
 use hackers::metadata::HaCKLoadType;
-use runner_modules::{event_handler, ImguiContext, RunnerHost, WgpuRenderer};
+use runner_modules::{event_handler, imgui_context, WgpuRenderer};
 use std::sync::Arc;
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
@@ -20,14 +21,17 @@ fn main() {
 }
 
 use hackers::{impl_hac_boilerplate, HaCK, HaCKS, HaCMetadata};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, Serialize)]
+use crate::runner_modules::imgui_context::ImguiContext;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DummyModule {
     cfg: bool,
+    counter: i32,
     metadata: HaCMetadata,
 }
 
@@ -37,7 +41,7 @@ impl HaCK for DummyModule {
     }
 
     fn nac_type_id(&self) -> TypeId {
-        TypeId::of::<DummyModule>()
+        TypeId::of::<Self>()
     }
 
     fn update(&mut self, _hacs: &HaCKS) {}
@@ -47,9 +51,14 @@ impl HaCK for DummyModule {
     }
     fn render_menu(&mut self, ui: &dyn hackers::UiBackend) {
         ui.text("Hello from Dummy Internal Module!");
-        if ui.button("Click Me") {
-            println!("Dummy module button clicked!");
+        if ui.button("+") {
+            self.counter += 1;
         }
+        ui.same_line();
+        if ui.button("-") {
+            self.counter -= 1;
+        }
+        ui.text(&format!("Counter: {}", self.counter));
     }
 
     impl_hac_boilerplate!(DummyModule, metadata);
@@ -63,6 +72,7 @@ async fn run(event_loop: EventLoop<()>, window: Arc<winit::window::Window>) {
     let mut runner_host = RunnerHost::new().with_internal_modules(|| {
         vec![Rc::new(RefCell::new(DummyModule {
             cfg: true,
+            counter: 0,
             metadata: HaCMetadata {
                 is_window_enabled: false,
                 load_type: HaCKLoadType::Internal,

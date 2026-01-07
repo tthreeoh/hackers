@@ -88,3 +88,4 @@ winit = { version = "0.29", default-features = false, features = ["rwh_05"] }
 wgpu = "25"
 pollster = "0.3"
 imgui-wgpu = "0.25"
+tempfile = "3.23.0"

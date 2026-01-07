@@ -69,6 +69,14 @@ impl HaCKS {
         (container, extra_settings, vec![])
     }
 
+    pub fn load_settings_map_from_file<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Result<HashMap<String, serde_json::Value>, Box<dyn std::error::Error>> {
+        let contents = std::fs::read_to_string(path)?;
+        let settings = serde_json::from_str::<HashMap<String, serde_json::Value>>(&contents)?;
+        Ok(settings)
+    }
+
     pub fn save_to_file<F, P: AsRef<std::path::Path>>(
         &self,
         path: P,
@@ -85,10 +93,7 @@ impl HaCKS {
             }
         }
 
-        let pretty_config = ron::ser::PrettyConfig::new()
-            .depth_limit(4)
-            .struct_names(true);
-        let contents = ron::ser::to_string_pretty(&settings, pretty_config)?;
+        let contents = serde_json::to_string_pretty(&settings)?;
         std::fs::write(path, contents)?;
         Ok(())
     }

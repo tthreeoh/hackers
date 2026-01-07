@@ -1,0 +1,78 @@
+{
+  "bg_image_size": [
+    900,
+    563
+  ],
+  "clear_color": [
+    0.10000000149011612,
+    0.10000000149011612,
+    0.10000000149011612,
+    0.5
+  ],
+  "bg_mode": "Stretch",
+  "RPG Client": {
+    "body": {
+      "collision_offset": [
+        0.0,
+        0.0
+      ],
+      "feet_offset": 5.0,
+      "head_offset": 10.0,
+      "height": 32.692,
+      "width": 13.038
+    },
+    "center_position": true,
+    "charge_bar_scale": 1.0,
+    "charge_bar_sprite": "monster_ui/world_healthbar",
+    "control_mode": "SideScroll",
+    "friction": 0.9,
+    "gravity": 1055.794,
+    "image_scale": 65,
+    "jump_cut_off": 0.5,
+    "jump_force": 404.29,
+    "jump_style": "Normal",
+    "max_charge_time": 0.5,
+    "max_run_speed": 400.0,
+    "show_collision_debug": true,
+    "wall_jump_force": [
+      10.301,
+      100.859
+    ],
+    "wall_slide_speed": 50.0,
+    "x_offset": 0.0,
+    "y_offset": -2.575
+  },
+  "bg_image_path_input": "assets\\backgrounds\\95.png",
+  "Dummy Internal Module": {
+    "cfg": true,
+    "counter": 6,
+    "metadata": {
+      "access_control": {
+        "default_access": "ReadWrite"
+      },
+      "auto_resize_window": true,
+      "category": "unknown",
+      "description": "unknown",
+      "draw_weight": 1.0,
+      "hotkeys": [],
+      "is_menu_enabled": true,
+      "is_render_enabled": false,
+      "is_update_enabled": false,
+      "is_window_enabled": false,
+      "load_type": "Internal",
+      "menu_weight": 1.0,
+      "name": "unknown",
+      "update_weight": 1.0,
+      "visible_in_gui": false,
+      "window_pos": [
+        0.0,
+        0.0
+      ],
+      "window_size": [
+        0.0,
+        0.0
+      ],
+      "window_weight": 1.0
+    }
+  }
+}

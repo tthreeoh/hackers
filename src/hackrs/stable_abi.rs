@@ -159,6 +159,13 @@ pub trait StableUiBackend {
     fn end_menu(&self);
     fn menu_item(&self, label: RStr<'_>) -> bool;
 
+    // Expanded UI
+    fn collapsing_header(&self, label: RStr<'_>) -> bool;
+    fn begin_combo(&self, label: RStr<'_>, preview: RStr<'_>) -> bool;
+    fn end_combo(&self);
+    fn selectable(&self, label: RStr<'_>, selected: bool) -> bool;
+    fn set_item_default_focus(&self);
+
     // Drawing
     fn get_window_draw_list(&self) -> StableDrawList_TO<'_, RBox<()>>;
 
@@ -169,6 +176,9 @@ pub trait StableUiBackend {
         width: u32,
         height: u32,
     ) -> StableTextureId;
+
+    // Input
+    fn is_key_down(&self, key: crate::gui::Key) -> bool;
 }
 
 #[sabi_trait]
@@ -200,6 +210,12 @@ pub trait StableHaCK: Send + Sync {
     );
     fn metadata(&self) -> &StableHaCMetadata;
 
+    // Persistence
+    fn save_settings(&self) -> RString {
+        RString::new()
+    }
+    fn load_settings(&mut self, _settings: RString) {}
+
     fn on_load(&mut self) {}
     fn on_unload(&mut self) {}
 }
@@ -225,7 +241,7 @@ impl RootModule for HackersModule_Ref {
 // IMPLS
 ///////////////////////////////////////////////////////////////////////////////
 
-use crate::gui::{MenuBarToken, MenuToken};
+use crate::gui::{ComboBoxToken, MenuBarToken, MenuToken};
 use std::cell::RefCell;
 
 /// Wraps the host's `&dyn UiBackend` and exposes it as `StableUiBackend`.
@@ -233,6 +249,7 @@ pub struct StableUiBackendWrapper<'a> {
     pub backend: &'a dyn UiBackend,
     pub menu_tokens: RefCell<Vec<MenuToken<'a>>>,
     pub menu_bar_tokens: RefCell<Vec<MenuBarToken<'a>>>,
+    pub combo_tokens: RefCell<Vec<ComboBoxToken<'a>>>,
 }
 
 impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
@@ -288,6 +305,35 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
             *value = RString::from(string_val);
         }
         changed
+    }
+
+    fn collapsing_header(&self, label: RStr<'_>) -> bool {
+        self.backend
+            .collapsing_header(label.as_str(), crate::gui::TreeNodeFlags::default())
+    }
+
+    fn begin_combo(&self, label: RStr<'_>, preview: RStr<'_>) -> bool {
+        if let Some(token) = self.backend.begin_combo(label.as_str(), preview.as_str()) {
+            self.combo_tokens.borrow_mut().push(token);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn end_combo(&self) {
+        let _ = self.combo_tokens.borrow_mut().pop();
+    }
+
+    fn selectable(&self, label: RStr<'_>, selected: bool) -> bool {
+        self.backend
+            .selectable(label.as_str())
+            .selected(selected)
+            .build()
+    }
+
+    fn set_item_default_focus(&self) {
+        self.backend.set_item_default_focus();
     }
 
     fn begin_window(&self, title: RStr<'_>, options: &StableWindowOptions) -> bool {
@@ -374,6 +420,10 @@ impl<'a> StableUiBackend for StableUiBackendWrapper<'a> {
     ) -> StableTextureId {
         let texture_id = self.backend.upload_texture(data.as_slice(), width, height);
         StableTextureId::new(texture_id)
+    }
+
+    fn is_key_down(&self, key: crate::gui::Key) -> bool {
+        self.backend.is_key_down(key)
     }
 }
 
@@ -551,6 +601,7 @@ impl HaCK for ForeignHaCK {
             backend: ui,
             menu_tokens: RefCell::new(Vec::new()),
             menu_bar_tokens: RefCell::new(Vec::new()),
+            combo_tokens: RefCell::new(Vec::new()),
         };
         let wrapper_ref = StableUiBackend_TO::from_ptr(&wrapper, abi_stable::sabi_trait::TD_Opaque);
         self.inner.render_menu(&wrapper_ref);
@@ -561,6 +612,7 @@ impl HaCK for ForeignHaCK {
             backend: ui,
             menu_tokens: RefCell::new(Vec::new()),
             menu_bar_tokens: RefCell::new(Vec::new()),
+            combo_tokens: RefCell::new(Vec::new()),
         };
         let wrapper_ref = StableUiBackend_TO::from_ptr(&wrapper, abi_stable::sabi_trait::TD_Opaque);
         self.inner.render_window(&wrapper_ref);
@@ -576,6 +628,7 @@ impl HaCK for ForeignHaCK {
             backend: ui,
             menu_tokens: RefCell::new(Vec::new()),
             menu_bar_tokens: RefCell::new(Vec::new()),
+            combo_tokens: RefCell::new(Vec::new()),
         };
         let wrapper_ref = StableUiBackend_TO::from_ptr(&wrapper, abi_stable::sabi_trait::TD_Opaque);
 
@@ -669,6 +722,16 @@ impl HaCK for ForeignHaCK {
     }
 
     fn to_json(&self) -> Result<serde_json::Value, serde_json::Error> {
-        Ok(serde_json::Value::Null)
+        let s = self.inner.save_settings();
+        if s.is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        serde_json::from_str(s.as_str())
+    }
+
+    fn apply_settings(&mut self, settings: serde_json::Value) {
+        let json_str = serde_json::to_string(&settings).unwrap_or_default();
+        use abi_stable::std_types::RString;
+        self.inner.load_settings(RString::from(json_str));
     }
 }

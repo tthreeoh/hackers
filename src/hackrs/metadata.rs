@@ -63,7 +63,7 @@ impl HotkeyBinding {
         if !self.is_bound() {
             return None;
         }
-        let key: Key = unsafe { std::mem::transmute(self.key as u8) };
+        let key: Key = unsafe { std::mem::transmute(self.key as u32) };
         let mut hk = crate::gui::hotkey_manager::Hotkey::new(key);
         if self.shift {
             hk = hk.with_shift();

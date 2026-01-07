@@ -1,4 +1,5 @@
-use crate::runner_modules::{ImguiContext, RunnerHost, WgpuRenderer};
+use crate::runner_modules::{imgui_context, ImguiContext, WgpuRenderer};
+use hackers::host::runner::RunnerHost;
 use std::sync::Arc;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoopWindowTarget;
@@ -36,6 +37,11 @@ pub fn handle_event(
             event: WindowEvent::RedrawRequested,
             ..
         } => {
+            if runner_host.reload_requested {
+                runner_host.reload_requested = false;
+                runner_host.perform_settings_reload();
+            }
+
             // Scope for UI rendering - ui must be dropped before calling render()
             {
                 let ui = imgui_ctx.prepare_frame(window);

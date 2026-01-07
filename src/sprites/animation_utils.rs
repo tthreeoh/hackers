@@ -76,9 +76,11 @@ pub enum UnitAnimationMode {
     BeingKnockback = 13,
     Sequence = 14,
     Run = 15,
+    Jump = 16,
+    Fall = 17,
 }
 
-const ALL_ANIMATION_MODES: [UnitAnimationMode; 16] = [
+const ALL_ANIMATION_MODES: [UnitAnimationMode; 18] = [
     UnitAnimationMode::Death,
     UnitAnimationMode::Stand,
     UnitAnimationMode::Walk,
@@ -95,6 +97,8 @@ const ALL_ANIMATION_MODES: [UnitAnimationMode; 16] = [
     UnitAnimationMode::BeingKnockback,
     UnitAnimationMode::Sequence,
     UnitAnimationMode::Run,
+    UnitAnimationMode::Jump,
+    UnitAnimationMode::Fall,
 ];
 
 /// Trait for types that can be registered in the animation system
@@ -139,6 +143,8 @@ impl UnitAnimationMode {
             13 => Some(Self::BeingKnockback),
             14 => Some(Self::Sequence),
             15 => Some(Self::Run),
+            16 => Some(Self::Jump),
+            17 => Some(Self::Fall),
             _ => None,
         }
     }
@@ -160,6 +166,8 @@ impl UnitAnimationMode {
             13 => Some(Self::BeingKnockback),
             14 => Some(Self::Sequence),
             15 => Some(Self::Run),
+            16 => Some(Self::Jump),
+            17 => Some(Self::Fall),
             _ => None,
         }
     }
@@ -755,4 +763,97 @@ pub fn get_current_frame_name_for_unit(
 /// Helper to get elapsed time from an optional Instant
 pub fn get_elapsed_seconds(start: Option<std::time::Instant>) -> f32 {
     start.map(|s| s.elapsed().as_secs_f32()).unwrap_or(0.0)
+}
+
+/// Calculate frame index with variable frame durations and speed scaling.
+pub fn calculate_variable_frame_index(
+    elapsed_time: f32,
+    base_fps: f32,
+    frame_count: usize,
+    behavior: &crate::sprites::images::AnimationBehavior,
+) -> usize {
+    // 1. Calculate effective time (Speed Scaling)
+    let mut effective_time = elapsed_time;
+    if let Some(scaling) = &behavior.speed_scaling {
+        let ramp = scaling.ramp_per_second;
+        let max_speed = scaling.max_speed;
+
+        if ramp > 0.0 && max_speed > 1.0 {
+            let t_cap = (max_speed - 1.0) / ramp;
+            if elapsed_time <= t_cap {
+                effective_time = elapsed_time + 0.5 * ramp * elapsed_time * elapsed_time;
+            } else {
+                let d_cap = t_cap + 0.5 * ramp * t_cap * t_cap;
+                let extra = elapsed_time - t_cap;
+                effective_time = d_cap + extra * max_speed;
+            }
+        } else if ramp > 0.0 {
+            effective_time = elapsed_time + 0.5 * ramp * elapsed_time * elapsed_time;
+        }
+    }
+
+    // 2. Identify active range
+    let (start_frame, end_frame) = if let Some(loop_range) = behavior.loop_range {
+        let (s, e) = loop_range;
+        (
+            s.min(frame_count.saturating_sub(1)),
+            e.min(frame_count.saturating_sub(1)),
+        )
+    } else {
+        (0, frame_count.saturating_sub(1))
+    };
+
+    if start_frame > end_frame {
+        return 0;
+    }
+
+    let base_frame_duration = 1.0 / base_fps.max(0.001);
+
+    // Helper to get duration of a specific frame
+    let get_frame_dur = |idx: usize| -> f32 {
+        if let Some(mods) = &behavior.frame_modifiers {
+            if let Some(m) = mods.get(&idx) {
+                if let Some(scale) = m.duration_scale {
+                    return base_frame_duration * scale;
+                }
+            }
+        }
+        base_frame_duration
+    };
+
+    // 3. Simulation Logic
+    let mut current_time = 0.0;
+
+    // Pre-loop phase
+    for f in 0..start_frame {
+        let dur = get_frame_dur(f);
+        if effective_time < current_time + dur {
+            return f;
+        }
+        current_time += dur;
+    }
+
+    // Loop phase
+    let mut loop_duration = 0.0;
+    for f in start_frame..=end_frame {
+        loop_duration += get_frame_dur(f);
+    }
+
+    if loop_duration <= 0.0001 {
+        return start_frame;
+    }
+
+    let time_in_loop = effective_time - current_time;
+    let looped_time = time_in_loop % loop_duration;
+
+    let mut t = 0.0;
+    for f in start_frame..=end_frame {
+        let dur = get_frame_dur(f);
+        if looped_time < t + dur {
+            return f;
+        }
+        t += dur;
+    }
+
+    end_frame
 }

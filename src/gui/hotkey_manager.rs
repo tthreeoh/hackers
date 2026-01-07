@@ -88,7 +88,7 @@ mod key_serde {
         let value = i32::deserialize(deserializer)?;
 
         if value >= 0 && value <= 299 {
-            Ok(unsafe { std::mem::transmute(value as u8) })
+            Ok(unsafe { std::mem::transmute(value as u32) })
         } else {
             Err(D::Error::custom(format!("Invalid key value: {}", value)))
         }
@@ -503,7 +503,7 @@ impl HotkeyManager {
         if b.alt {
             s.push_str("Alt+");
         }
-        let key: Key = unsafe { std::mem::transmute(b.key as u8) };
+        let key: Key = unsafe { std::mem::transmute(b.key as u32) };
         s.push_str(&format!("{:?}", key));
         s
     }
@@ -756,7 +756,7 @@ impl HaCMetadata {
         if b.alt {
             s.push_str("Alt+");
         }
-        let key: Key = unsafe { std::mem::transmute(b.key as u8) };
+        let key: Key = unsafe { std::mem::transmute(b.key as u32) };
         s.push_str(&format!("{:?}", key));
         s
     }

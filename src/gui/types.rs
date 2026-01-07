@@ -1,3 +1,4 @@
+use abi_stable::StableAbi;
 use std::ops::{Add, Div, Index, Mul, Sub};
 
 /// Generic color representation (RGBA, 0.0-1.0 range)
@@ -343,7 +344,8 @@ impl std::ops::BitOr for TableFlags {
 }
 
 /// Input key representation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, StableAbi)]
 pub enum Key {
     // Letters
     A,

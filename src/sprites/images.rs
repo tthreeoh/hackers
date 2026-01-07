@@ -2,6 +2,7 @@ use image::DynamicImage;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -292,6 +293,7 @@ pub struct DiscoveredFolder {
     // Shared
     pub mode_overrides: Option<ModeOverrides>,
     pub animation_mode: Option<AnimationMode>,
+    pub behaviors: Option<HashMap<String, AnimationBehavior>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -302,6 +304,7 @@ pub struct DiscoveredFile {
     pub fps: Option<f32>,
     pub speed: Option<f32>,
     pub cell_indices: Option<Vec<usize>>,
+    pub collision_data: Option<HashMap<usize, Vec<[f32; 2]>>>,
 }
 
 impl DiscoveredFolder {
@@ -379,17 +382,21 @@ pub fn discover_folder_contents(
                                 layout,
                                 fps,
                                 speed,
-                                cell_indices: file_config.cell_indices.clone(), // NEW
+                                cell_indices: file_config.cell_indices.clone(),
+                                collision_data: file_config.collision_data.clone(),
                             });
                         }
                     }
                 }
             }
 
+            // Calculate total frame count for modular folders
+            let total_frame_count: usize = discovered_files.iter().map(|f| f.frame_count).sum();
+
             return DiscoveredFolder {
                 name: folder_name,
                 source_type: SourceType::PNGFrames,
-                frame_count: None,
+                frame_count: Some(total_frame_count),
                 layout: None,
                 fps: None,
                 speed: None,
@@ -397,22 +404,32 @@ pub fn discover_folder_contents(
                 mode_mapping: cfg.mode_mapping.clone(),
                 mode_overrides: cfg.mode_overrides.clone(),
                 animation_mode: cfg.animation_mode.clone(),
+                behaviors: cfg.behaviors.clone(),
             };
         }
     }
 
     // Legacy single-file mode (unchanged)
+    let layout = if let Some(ref c) = config {
+        c.layout
+            .as_ref()
+            .and_then(|l| parse_layout_string(l, c.grid_columns))
+    } else {
+        None
+    };
+
     DiscoveredFolder {
         name: folder_name,
         source_type: SourceType::PNGFrames,
         frame_count: config.as_ref().and_then(|c| c.frame_count),
-        layout: None,
+        layout,
         fps: config.as_ref().and_then(|c| c.fps),
         speed: config.as_ref().and_then(|c| c.speed),
         files: None,
         mode_mapping: None,
         mode_overrides: config.as_ref().and_then(|c| c.mode_overrides.clone()),
         animation_mode: config.and_then(|c| c.animation_mode),
+        behaviors: None,
     }
 }
 fn parse_layout_string(layout: &str, grid_columns: Option<usize>) -> Option<SpriteSheetLayout> {
@@ -463,22 +480,24 @@ pub struct FileConfig {
     pub grid_columns: Option<usize>,
     #[serde(default)]
     pub cell_indices: Option<Vec<usize>>,
+    #[serde(default)]
+    pub collision_data: Option<HashMap<usize, Vec<[f32; 2]>>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum AnimationMode {
+    /// State-based animation (direct frame mapping)
+    StateBased {
+        #[serde(rename = "state_mapping")]
+        mapping: StateMapping,
+    },
     /// Time-based animation (current behavior, default)
     TimeBased {
         #[serde(default)]
         fps: Option<f32>,
         #[serde(default)]
         looping: Option<bool>,
-    },
-    /// State-based animation (direct frame mapping)
-    StateBased {
-        #[serde(rename = "state_mapping")]
-        mapping: StateMapping,
     },
 }
 
@@ -491,6 +510,9 @@ pub enum StateMapping {
     Percentage,
     /// Custom ranges (e.g., 0-25% = frames 0-5, 26-50% = frames 6-10)
     Ranges(Vec<StateRange>),
+    /// Automatic 4-way directional (divides frames equally into Up/Left/Down/Right)
+    #[serde(rename = "directional_4way")]
+    Directional4Way,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -501,7 +523,7 @@ pub struct StateRange {
     pub end_frame: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SpriteConfig {
     // ===== GLOBAL DEFAULTS (apply to all files if not overridden) =====
     #[serde(default)]
@@ -537,9 +559,50 @@ pub struct SpriteConfig {
     pub mode_overrides: Option<ModeOverrides>,
     #[serde(default)]
     pub animation_mode: Option<AnimationMode>,
+    #[serde(default)]
+    pub transitions: Option<HashMap<String, TransitionConfig>>,
+    #[serde(default)]
+    pub behaviors: Option<HashMap<String, AnimationBehavior>>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FrameModifier {
+    /// Multiplier for frame duration. 1.0 = normal, 2.0 = 2x duration (slower), 0.5 = 0.5x duration (faster).
+    #[serde(default)]
+    pub duration_scale: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SpeedScaling {
+    /// Linear increase in playback speed per second.
+    /// e.g. 0.5 means speed increases by 50% every second.
+    #[serde(default)]
+    pub ramp_per_second: f32,
+    /// Maximum playback speed multiplier.
+    #[serde(default)]
+    pub max_speed: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AnimationBehavior {
+    #[serde(default)]
+    pub loop_range: Option<(usize, usize)>,
+    #[serde(default)]
+    pub force_loop: bool,
+    #[serde(default)]
+    pub frame_modifiers: Option<HashMap<usize, FrameModifier>>,
+    #[serde(default)]
+    pub speed_scaling: Option<SpeedScaling>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransitionConfig {
+    /// Number of frames to skip at start of animation
+    #[serde(default)]
+    pub skip_frames: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ModeOverrides {
     #[serde(default)]
     pub walk: Option<ModeConfig>,
@@ -557,7 +620,7 @@ pub struct ModeOverrides {
     pub stand: Option<ModeConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ModeConfig {
     #[serde(default)]
     pub fps: Option<f32>,
@@ -574,10 +637,15 @@ impl SpriteConfig {
     /// Get the filename for a specific animation mode
     /// Returns None if not in modular mode or mapping doesn't exist
     pub fn get_file_for_mode(&self, mode_name: &str) -> Option<&str> {
-        self.mode_mapping
-            .as_ref()
-            .and_then(|mapping| mapping.get(mode_name))
-            .map(|s| s.as_str())
+        self.mode_mapping.as_ref().and_then(|mapping| {
+            // Try exact match first
+            if let Some(s) = mapping.get(mode_name) {
+                return Some(s.as_str());
+            }
+            // Try lowercase match
+            let lower = mode_name.to_lowercase();
+            mapping.get(&lower).map(|s| s.as_str())
+        })
     }
 
     /// Get the file configuration for a specific filename
@@ -984,6 +1052,7 @@ pub fn get_frame_for_state(
     frame_count: usize,
     animation_mode: Option<&AnimationMode>,
     state_value: f32,
+    animation_progress: Option<f32>, // NEW: 0.0-1.0 for animating within the range
 ) -> usize {
     let Some(AnimationMode::StateBased { mapping }) = animation_mode else {
         // Not a state-based animation, return first frame
@@ -1004,18 +1073,51 @@ pub fn get_frame_for_state(
             let clamped = state_value.clamp(0.0, 1.0);
             ((clamped * (frame_count - 1) as f32).round() as usize).min(frame_count - 1)
         }
+        StateMapping::Directional4Way => {
+            // Auto-divide frames into 4 equal directional ranges
+            // 0.0-0.25 = Up, 0.25-0.50 = Left, 0.50-0.75 = Down, 0.75-1.00 = Right
+            let frames_per_direction = frame_count / 4;
+            if frames_per_direction == 0 {
+                return 0;
+            }
+
+            // Determine which direction based on state_value
+            let direction_index = ((state_value.clamp(0.0, 0.999) * 4.0) as usize).min(3);
+            let direction_start = direction_index * frames_per_direction;
+            let direction_end = direction_start + frames_per_direction - 1;
+
+            // If animation_progress is provided, cycle through frames in this direction
+            if let Some(progress) = animation_progress {
+                let frame_offset = (progress as usize) % frames_per_direction;
+                return (direction_start + frame_offset).min(frame_count - 1);
+            }
+
+            // Otherwise, return first frame of the direction
+            direction_start.min(frame_count - 1)
+        }
         StateMapping::Ranges(ranges) => {
             // Find which range the value falls into
             for range in ranges {
                 if state_value >= range.min_value && state_value <= range.max_value {
-                    // Map within the range
+                    let frame_span = range.end_frame.saturating_sub(range.start_frame) + 1;
+
+                    // If animation_progress is provided, use it to cycle through frames in the range
+                    if let Some(progress) = animation_progress {
+                        // progress is a frame number (e.g., 0.0, 1.5, 2.3, etc.)
+                        // Convert to frame offset within this range
+                        let frame_offset = (progress as usize) % frame_span;
+                        return (range.start_frame + frame_offset)
+                            .min(range.end_frame)
+                            .min(frame_count - 1);
+                    }
+
+                    // Otherwise, map state_value position within range to a frame
                     let range_span = range.max_value - range.min_value;
                     if range_span == 0.0 {
                         return range.start_frame.min(frame_count - 1);
                     }
                     let range_progress = (state_value - range.min_value) / range_span;
-                    let frame_span = range.end_frame.saturating_sub(range.start_frame);
-                    let frame_offset = (range_progress * frame_span as f32).round() as usize;
+                    let frame_offset = (range_progress * (frame_span - 1) as f32).round() as usize;
                     return (range.start_frame + frame_offset)
                         .min(range.end_frame)
                         .min(frame_count - 1);
@@ -1036,6 +1138,21 @@ macro_rules! define_images {
         ),* $(,)?
     ) => {
         pub struct ImageLoader;
+
+    impl ImageLoader {
+        /// Load sprite configuration from a folder
+        pub fn load_sprite_config(folder_path: &std::path::PathBuf) -> Option<SpriteConfig> {
+            let config_path = folder_path.join("sprite.json");
+            if config_path.exists() {
+                 if let Ok(file) = std::fs::File::open(config_path) {
+                     if let Ok(config) = serde_json::from_reader(file) {
+                         return Some(config);
+                     }
+                 }
+            }
+            None
+        }
+    }
 
         impl ImageLoader {
             /// Load a single embedded image by name
@@ -1182,6 +1299,83 @@ macro_rules! define_images {
             }
         }
 
+        fn ensure_collision_data(dir_path: &PathBuf, config: &mut SpriteConfig) -> bool {
+            let mut modified = false;
+
+            if let Some(files) = &mut config.files {
+                let filenames: Vec<String> = files.keys().cloned().collect();
+
+                for filename in filenames {
+                    // Temporarily take the config out to avoid double borrow (if needed, but here we can just target)
+                    if let Some(file_config) = files.get_mut(&filename) {
+                        let mut needs_generation = file_config.collision_data.is_none();
+                        if !needs_generation {
+                            if let Some(data) = &file_config.collision_data {
+                                if data.values().any(|v| v.len() < 3) {
+                                    needs_generation = true;
+                                }
+                            }
+                        }
+
+                        if needs_generation {
+                            let file_path = dir_path.join(&filename);
+                            if let Ok(data) = std::fs::read(&file_path) {
+                                if let Ok(sheet) = image::load_from_memory(&data) {
+                                    let layout_str = file_config
+                                        .layout
+                                        .as_ref()
+                                        .or(config.default_layout.as_ref());
+                                    let cols = file_config.grid_columns.or(config.grid_columns);
+
+                                    let layout = layout_str
+                                        .and_then(|l| parse_layout_string(l, cols))
+                                        .unwrap_or(SpriteSheetLayout::HorizontalStrip);
+
+                                    let mut generated_map = HashMap::new();
+
+                                    if let Some(indices) = &file_config.cell_indices {
+                                        let max_cell =
+                                            indices.iter().max().map(|x| x + 1).unwrap_or(0);
+                                        for (out_idx, &cell_idx) in indices.iter().enumerate() {
+                                            if let Some(frame) =
+                                                layout.extract_frame(&sheet, cell_idx, max_cell)
+                                            {
+                                                if let Some(poly) =
+                                                    generate_collision_polygon(&frame)
+                                                {
+                                                    generated_map.insert(out_idx, poly);
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        let count = file_config.frame_count.unwrap_or(1);
+
+                                        for i in 0..count {
+                                            if let Some(frame) =
+                                                layout.extract_frame(&sheet, i, count)
+                                            {
+                                                if let Some(poly) =
+                                                    generate_collision_polygon(&frame)
+                                                {
+                                                    generated_map.insert(i, poly);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if !generated_map.is_empty() {
+                                        file_config.collision_data = Some(generated_map);
+                                        modified = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            modified
+        }
+
         pub fn load_sprite_config(dir_path: &PathBuf) -> Option<SpriteConfig> {
             let config_path = dir_path.join("sprite.json");
             if !config_path.exists() {
@@ -1191,7 +1385,19 @@ macro_rules! define_images {
             match std::fs::read_to_string(&config_path) {
                 Ok(content) => {
                     match serde_json::from_str::<SpriteConfig>(&content) {
-                        Ok(config) => {
+                        Ok(mut config) => {
+                            // Ensure collision data logic
+                            if ensure_collision_data(dir_path, &mut config) {
+                                // Save back
+                                if let Ok(new_content) = serde_json::to_string_pretty(&config) {
+                                    let _ = std::fs::write(&config_path, new_content);
+                                    info!(
+                                        "Updated sprite.json with generated collision data for {:?}",
+                                        dir_path.file_name()
+                                    );
+                                }
+                            }
+
                             info!("Loaded sprite.json for {:?}", dir_path.file_name());
                             Some(config)
                         }
@@ -1288,6 +1494,7 @@ macro_rules! define_images {
                 mode_mapping: None,  // NEW
                 mode_overrides: None,
                 animation_mode: None,
+                behaviors: None,
             }));
 
             // Scan filesystem paths
@@ -1341,6 +1548,7 @@ macro_rules! define_images {
                                             mode_mapping: None,
                                             mode_overrides: None,
                                             animation_mode: None,
+                                            behaviors: None,
                                         });
                                     }
                                 }
@@ -1352,68 +1560,17 @@ macro_rules! define_images {
                             if let Some(folder_name) = entry_path.file_name().and_then(|s| s.to_str()) {
                                 let config = load_sprite_config(&entry_path);
 
-                                let sheet_path = entry_path.join("sheet.png");
-                                if sheet_path.exists() {
-                                    let frame_count = config.as_ref()
-                                        .and_then(|c| c.frame_count)
-                                        .unwrap_or_else(|| count_png_frames(&entry_path));
+                                // Use discover_folder_contents to properly handle both legacy and modular configs
+                                let mut discovered = discover_folder_contents(&entry_path, config);
 
-                                    if frame_count > 0 {
-                                        let layout = parse_sprite_layout(&config);
-                                        let fps = config.as_ref().and_then(|c| c.fps);
-                                        let speed = config.as_ref().and_then(|c| c.speed);
-                                        let mode_overrides = config.as_ref().and_then(|c| c.mode_overrides.clone());
-                                        let animation_mode = config.as_ref().and_then(|c| c.animation_mode.clone());
+                                // Apply parent prefix if needed
+                                if let Some(prefix) = parent_prefix {
+                                    discovered.name = format!("{}/{}", prefix, discovered.name);
+                                }
 
-                                        let full_name = if let Some(prefix) = parent_prefix {
-                                            format!("{}/{}", prefix, folder_name)
-                                        } else {
-                                            folder_name.to_string()
-                                        };
-
-                                        local_folders.push(DiscoveredFolder {
-                                            name: full_name,
-                                            source_type: SourceType::PNGSheet,
-                                            frame_count: Some(frame_count),
-                                            layout,
-                                            fps,
-                                            speed,
-                                            files: None,
-                                            mode_mapping: None,
-                                            mode_overrides,
-                                            animation_mode,
-                                        });
-                                    }
-                                } else {
-                                    let frame_count = config.as_ref()
-                                        .and_then(|c| c.frame_count)
-                                        .unwrap_or_else(|| count_png_frames(&entry_path));
-
-                                    if frame_count > 0 {
-                                        let fps = config.as_ref().and_then(|c| c.fps);
-                                        let speed = config.as_ref().and_then(|c| c.speed);
-                                        let mode_overrides = config.as_ref().and_then(|c| c.mode_overrides.clone());
-                                        let animation_mode = config.and_then(|c| c.animation_mode);
-
-                                        let full_name = if let Some(prefix) = parent_prefix {
-                                            format!("{}/{}", prefix, folder_name)
-                                        } else {
-                                            folder_name.to_string()
-                                        };
-
-                                        local_folders.push(DiscoveredFolder {
-                                            name: full_name,
-                                            source_type: SourceType::PNGFrames,
-                                            frame_count: Some(frame_count),
-                                            layout: None,
-                                            fps,
-                                            speed,
-                                            files: None,
-                                            mode_mapping: None,
-                                            mode_overrides,
-                                            animation_mode,
-                                        });
-                                    }
+                                // Only add if it has content (frames or files)
+                                if discovered.frame_count.unwrap_or(0) > 0 || discovered.files.is_some() {
+                                    local_folders.push(discovered);
                                 }
                             }
                         }
@@ -1442,9 +1599,8 @@ macro_rules! define_images {
 
             folders
         }
-
-    };
-}
+    }
+    }
 
 // Define embedded images - NO animation configs here!
 define_images! {
@@ -1598,3 +1754,139 @@ define_images! {
 
     MonsterUI: "../assets/images/monster_ui" => []
 }
+
+pub fn generate_collision_polygon(image: &DynamicImage) -> Option<Vec<[f32; 2]>> {
+    use image::GenericImageView;
+    let width = image.width();
+    let height = image.height();
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let threshold = 10;
+    let mut start_point = None;
+    'search: for y in 0..height {
+        for x in 0..width {
+            if image.get_pixel(x, y)[3] > threshold {
+                start_point = Some((x, y));
+                break 'search;
+            }
+        }
+    }
+    let start = if let Some(p) = start_point {
+        p
+    } else {
+        return None;
+    };
+
+    let mut contour = Vec::new();
+    contour.push([start.0 as f32, start.1 as f32]);
+
+    let moore_offsets = [
+        (0, -1),
+        (1, -1),
+        (1, 0),
+        (1, 1),
+        (0, 1),
+        (-1, 1),
+        (-1, 0),
+        (-1, -1),
+    ];
+
+    let mut current = start;
+    let mut search_start_idx = 0;
+
+    let max_iters = (width * height) as usize * 4;
+    let mut iters = 0;
+
+    loop {
+        iters += 1;
+        if iters > max_iters {
+            break;
+        }
+
+        let mut found_next = false;
+        let mut next_pixel = current;
+        let mut found_idx = 0;
+
+        for i in 0..8 {
+            let idx = (search_start_idx + i) % 8;
+            let off = moore_offsets[idx];
+            let nx = current.0 as i32 + off.0;
+            let ny = current.1 as i32 + off.1;
+
+            let is_foreground = if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
+                image.get_pixel(nx as u32, ny as u32)[3] > threshold
+            } else {
+                false
+            };
+
+            if is_foreground {
+                found_next = true;
+                next_pixel = (nx as u32, ny as u32);
+                found_idx = idx;
+                break;
+            }
+        }
+
+        if !found_next {
+            break;
+        }
+
+        if current == start && contour.len() > 1 {
+            let second = contour[1];
+            if next_pixel.0 as f32 == second[0] && next_pixel.1 as f32 == second[1] {
+                break;
+            }
+        }
+
+        contour.push([next_pixel.0 as f32, next_pixel.1 as f32]);
+        current = next_pixel;
+        search_start_idx = (found_idx + 6) % 8;
+    }
+
+    Some(simplify_polygon(&contour, 2.0))
+}
+
+pub fn simplify_polygon(points: &[[f32; 2]], epsilon: f32) -> Vec<[f32; 2]> {
+    if points.len() < 3 {
+        return points.to_vec();
+    }
+    let mut dmax = 0.0;
+    let mut index = 0;
+    let end = points.len() - 1;
+    for i in 1..end {
+        let d = perpendicular_distance(&points[i], &points[0], &points[end]);
+        if d > dmax {
+            index = i;
+            dmax = d;
+        }
+    }
+    let mut result_list = Vec::new();
+    if dmax > epsilon {
+        let rec_results1 = simplify_polygon(&points[0..=index], epsilon);
+        let rec_results2 = simplify_polygon(&points[index..=end], epsilon);
+        result_list.extend_from_slice(&rec_results1[..rec_results1.len() - 1]);
+        result_list.extend_from_slice(&rec_results2);
+    } else {
+        result_list.push(points[0]);
+        result_list.push(points[end]);
+    }
+    result_list
+}
+
+fn perpendicular_distance(pt: &[f32; 2], line_start: &[f32; 2], line_end: &[f32; 2]) -> f32 {
+    let dx = line_end[0] - line_start[0];
+    let dy = line_end[1] - line_start[1];
+    let numerator = ((dy * pt[0]) - (dx * pt[1]) + (line_end[0] * line_start[1])
+        - (line_end[1] * line_start[0]))
+        .abs();
+    let denominator = (dy * dy + dx * dx).sqrt();
+    if denominator == 0.0 {
+        return 0.0;
+    }
+    numerator / denominator
+}
+
+#[path = "images_test.rs"]
+#[cfg(test)]
+mod images_test;

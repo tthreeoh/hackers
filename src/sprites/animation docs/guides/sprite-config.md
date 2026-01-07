@@ -540,60 +540,100 @@ Image layout:
 
 ### Top-Level Fields
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `fps` | number | No | 15.0 | Frames per second |
-| `speed` | number | No | 1.0 | Speed multiplier |
-| `frame_count` | integer | No | Auto | Total frames |
-| `layout` | string | No | "horizontal" | Frame layout type |
-| `grid_columns` | integer | If grid | - | Columns in grid |
-| `default_fps` | number | No | 15.0 | Default FPS for modular |
-| `default_layout` | string | No | "horizontal" | Default layout for modular |
-| `files` | object | No | - | Modular file definitions |
-| `mode_mapping` | object | No | - | Mode to file mapping |
-| `mode_overrides` | object | No | - | Per-mode settings |
-| `animation_mode` | object | No | - | State-based config |
+| Field            | Type    | Required | Default      | Description                  |
+| ---------------- | ------- | -------- | ------------ | ---------------------------- |
+| `fps`            | number  | No       | 15.0         | Frames per second            |
+| `speed`          | number  | No       | 1.0          | Speed multiplier             |
+| `frame_count`    | integer | No       | Auto         | Total frames                 |
+| `layout`         | string  | No       | "horizontal" | Frame layout type            |
+| `grid_columns`   | integer | If grid  | -            | Columns in grid              |
+| `default_fps`    | number  | No       | 15.0         | Default FPS for modular      |
+| `default_layout` | string  | No       | "horizontal" | Default layout for modular   |
+| `files`          | object  | No       | -            | Modular file definitions     |
+| `mode_mapping`   | object  | No       | -            | Mode to file mapping         |
+| `mode_overrides` | object  | No       | -            | Per-mode settings            |
+| `animation_mode` | object  | No       | -            | State-based config           |
+| `transitions`    | object  | No       | -            | Transitions between modes    |
+| `behaviors`      | object  | No       | -            | Advanced animation behaviors |
+
+---
+
+### Transitions Object
+
+Map "from_mode->to_mode" keys to transition rules.
+
+```json
+"transitions": {
+  "run->jump": {
+    "skip_frames": 2
+  }
+}
+```
+
+| Field         | Type    | Description                       |
+| ------------- | ------- | --------------------------------- |
+| `skip_frames` | integer | Number of frames to skip at start |
+
+---
+
+### Behaviors Object
+
+Map mode names to behavior rules.
+
+```json
+"behaviors": {
+  "jump": {
+    "loop_range": [4, 5],
+    "force_loop": false
+  }
+}
+```
+
+| Field        | Type       | Description                                                              |
+| ------------ | ---------- | ------------------------------------------------------------------------ |
+| `loop_range` | [int, int] | Range of frames to loop [start, end]                                     |
+| `force_loop` | boolean    | If true, loops immediately. If false, plays intro (0..start) then loops. |
 
 ---
 
 ### File Object Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `frame_count` | integer | Yes | Frames in this file |
-| `fps` | number | No | Overrides default_fps |
-| `speed` | number | No | Speed multiplier |
-| `layout` | string | No | Overrides default_layout |
-| `grid_columns` | integer | If grid | Columns in grid |
+| Field          | Type    | Required | Description              |
+| -------------- | ------- | -------- | ------------------------ |
+| `frame_count`  | integer | Yes      | Frames in this file      |
+| `fps`          | number  | No       | Overrides default_fps    |
+| `speed`        | number  | No       | Speed multiplier         |
+| `layout`       | string  | No       | Overrides default_layout |
+| `grid_columns` | integer | If grid  | Columns in grid          |
 
 ---
 
 ### Mode Override Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `fps` | number | FPS for this mode |
+| Field   | Type   | Description         |
+| ------- | ------ | ------------------- |
+| `fps`   | number | FPS for this mode   |
 | `speed` | number | Speed for this mode |
 
 ---
 
 ### Animation Mode Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field           | Type   | Description                         |
+| --------------- | ------ | ----------------------------------- |
 | `state_mapping` | string | "percentage", "direct", or "ranges" |
-| `ranges` | array | Array of range objects (if ranges) |
+| `ranges`        | array  | Array of range objects (if ranges)  |
 
 ---
 
 ### Range Object Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `min_value` | number | Minimum state value |
-| `max_value` | number | Maximum state value |
+| Field         | Type    | Description          |
+| ------------- | ------- | -------------------- |
+| `min_value`   | number  | Minimum state value  |
+| `max_value`   | number  | Maximum state value  |
 | `start_frame` | integer | First frame in range |
-| `end_frame` | integer | Last frame in range |
+| `end_frame`   | integer | Last frame in range  |
 
 ---
 

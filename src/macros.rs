@@ -97,10 +97,16 @@ macro_rules! impl_hac_boilerplate {
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
         }
-        
+
+        fn apply_settings(&mut self, settings: serde_json::Value) {
+            if let Ok(loaded) = serde_json::from_value::<Self>(settings) {
+                *self = loaded;
+            } else {
+                println!("Failed to deserialize {} settings", self.name());
+            }
+        }
     };
 }
-
 
 #[macro_export]
 macro_rules! declare_and_register_hacs {
@@ -178,7 +184,6 @@ macro_rules! declare_and_register_hacs {
         }
     };
 }
-
 
 #[macro_export]
 macro_rules! impl_nac_for_hacs {

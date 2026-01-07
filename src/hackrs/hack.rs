@@ -73,6 +73,7 @@ pub trait HaCK: ErasedSerialize + Send + 'static {
         }
         Ok(json)
     }
+    fn apply_settings(&mut self, _settings: serde_json::Value) {}
 }
 
 #[allow(unused)]
