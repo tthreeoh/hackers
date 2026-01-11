@@ -66,15 +66,41 @@ fn translate_texture_id(request_id: imgui::TextureId) -> imgui::TextureId {
     })
 }
 
-#[cfg(feature = "ui-imgui")]
 pub struct ImguiBackend<'ui> {
     pub ui: &'ui imgui::Ui,
+    // Cached input state
+    cached_keys_down: [bool; 1024],
+    cached_io: IoState,
+    // Add other cached states as needed
 }
 
 #[cfg(feature = "ui-imgui")]
 impl<'ui> ImguiBackend<'ui> {
     pub fn new(ui: &'ui imgui::Ui) -> Self {
-        Self { ui }
+        let io = ui.io();
+        
+        // Cache keys
+        let mut cached_keys_down = [false; 1024];
+        for (i, &down) in io.keys_down.iter().enumerate() {
+            if i < 1024 {
+                cached_keys_down[i] = down;
+            }
+        }
+
+        // Cache IO state
+        let cached_io = IoState {
+            key_shift: io.key_shift,
+            key_ctrl: io.key_ctrl,
+            key_alt: io.key_alt,
+            mouse_pos: Vec2::from(io.mouse_pos),
+            display_size: Vec2::from(io.display_size),
+        };
+
+        Self { 
+            ui,
+            cached_keys_down,
+            cached_io,
+        }
     }
 
     /// Get the underlying imgui Ui reference
@@ -553,7 +579,13 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
     }
 
     fn is_key_down(&self, key: Key) -> bool {
-        self.ui.io().keys_down[convert_key(key) as usize]
+        // Use cached state
+        let idx = convert_key(key) as usize;
+        if idx < 1024 {
+            self.cached_keys_down[idx]
+        } else {
+            false
+        }
     }
 
     fn is_mouse_clicked(&self, button: MouseButton) -> bool {
@@ -581,14 +613,8 @@ impl<'ui> UiBackend for ImguiBackend<'ui> {
     }
 
     fn io(&self) -> IoState {
-        let io = self.ui.io();
-        IoState {
-            key_shift: io.key_shift,
-            key_ctrl: io.key_ctrl,
-            key_alt: io.key_alt,
-            mouse_pos: Vec2::from(io.mouse_pos),
-            display_size: Vec2::from(io.display_size),
-        }
+        // Return cached state
+        self.cached_io.clone()
     }
 
     fn keys_down(&self) -> &[bool] {
