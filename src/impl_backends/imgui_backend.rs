@@ -107,6 +107,29 @@ impl<'ui> ImguiBackend<'ui> {
     pub fn inner(&self) -> &imgui::Ui {
         self.ui
     }
+
+    /// Renders a hidden off-screen ImGui window that stabilizes input handling.
+    /// 
+    /// Call this once per frame in render loops that may not always have a visible window.
+    /// This prevents crashes in game hooks (like D2R) where the absence of ImGui window 
+    /// activity causes input-related instability.
+    /// 
+    /// The window is positioned at (-1000, -1000), is 1x1 pixel, has no decoration,
+    /// and is fully transparent.
+    pub fn ensure_stability(&self) {
+        self.ui.window("##hackers_stability_probe")
+            .position([-1000.0, -1000.0], imgui::Condition::Always)
+            .size([1.0, 1.0], imgui::Condition::Always)
+            .no_decoration()
+            .bg_alpha(0.0)
+            .build(|| {
+                // Touch input state to keep memory pages resident
+                for &down in self.ui.io().keys_down.iter() {
+                    std::hint::black_box(down);
+                }
+                std::hint::black_box(self.ui.io().mouse_pos);
+            });
+    }
 }
 
 #[cfg(feature = "ui-imgui")]
