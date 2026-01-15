@@ -127,6 +127,7 @@ impl HaCKS {
                     );
                     ui.separator();
                     if ui.button("Undock Group##undock_grp") {
+                        log::info!("[HACKERS] Undocking group: {:?}", top_path);
                         self.windowed_groups
                             .borrow_mut()
                             .insert(top_path.clone(), true);
@@ -191,9 +192,11 @@ impl HaCKS {
                         ui.separator();
                         let button_label = format!("Window##undock_{:?}", type_id);
                         if ui.small_button(&button_label) {
+                            log::info!("[HACKERS] Undocking '{}' to window", name_key);
                             module.metadata_mut().undocked_from_menu = true;
                             module.set_show_window(true);
                             module.set_show_menu(false);
+                            *self.menu_dirty.borrow_mut() = true;
                         }
                     }
                 }
@@ -261,8 +264,14 @@ impl HaCKS {
                 let mut show = module.is_window_enabled();
                 let name = module.name().to_string();
                 let type_id = module.nac_type_id();
+                let undocked = module.metadata().undocked_from_menu;
 
                 if show {
+                    log::debug!(
+                        "[HACKERS] Rendering window for '{}' (undocked={})",
+                        name,
+                        undocked
+                    );
                     let metadata = module.metadata();
                     let saved_pos = if metadata.window_pos == [0.0, 0.0] {
                         [80.0 * scale, 0.0]
@@ -321,6 +330,8 @@ impl HaCKS {
                     module.metadata_mut().undocked_from_menu = false;
                     module.set_show_window(show);
                     module.set_show_menu(!show);
+                    // Mark menu dirty so it rebuilds with this module
+                    *self.menu_dirty.borrow_mut() = true;
                 }
             }
         }
