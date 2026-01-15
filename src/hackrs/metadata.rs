@@ -112,6 +112,9 @@ pub struct HaCMetadata {
     #[serde(default)]
     pub access_control: AccessControl,
     pub load_type: HaCKLoadType,
+    /// When true, this module was undocked from a menu and should render menu content in the window
+    #[serde(default)]
+    pub undocked_from_menu: bool,
 }
 
 impl Default for HaCMetadata {
@@ -135,6 +138,7 @@ impl Default for HaCMetadata {
             window_size: default_window_size(),
             access_control: AccessControl::new(AccessLevel::ReadWrite),
             load_type: HaCKLoadType::Internal,
+            undocked_from_menu: false,
         }
     }
 }

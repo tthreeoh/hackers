@@ -124,6 +124,7 @@ impl StableHaCMetadata {
             window_size: self.window_size,
             access_control: AccessControl::new(AccessLevel::ReadWrite),
             load_type: self.load_type.clone(),
+            undocked_from_menu: false,
         }
     }
 }

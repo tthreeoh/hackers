@@ -191,6 +191,7 @@ impl HaCKS {
                         ui.separator();
                         let button_label = format!("Window##undock_{:?}", type_id);
                         if ui.small_button(&button_label) {
+                            module.metadata_mut().undocked_from_menu = true;
                             module.set_show_window(true);
                             module.set_show_menu(false);
                         }
@@ -292,7 +293,12 @@ impl HaCKS {
                             }
                         }
 
-                        module.render_window(ui);
+                        // If undocked from menu, render menu content in the window
+                        if module.metadata().undocked_from_menu {
+                            module.render_menu(ui);
+                        } else {
+                            module.render_window(ui);
+                        }
 
                         if tracking_enabled {
                             if let Some(tracker) =
@@ -311,6 +317,8 @@ impl HaCKS {
                 }
 
                 if !show {
+                    // Reset undocked flag when window is closed
+                    module.metadata_mut().undocked_from_menu = false;
                     module.set_show_window(show);
                     module.set_show_menu(!show);
                 }
